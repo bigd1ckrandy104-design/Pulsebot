@@ -57,8 +57,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.deferReply({ ephemeral: true });
 
         const id = crypto.randomBytes(6).toString('hex');
-        // ---- CHANGE THIS URL TO YOUR ACTUAL RENDER URL ----
-        const url = `https://dox-bot-43ij.onrender.com/img/${id}.png`;
+        const url = `https://pulsebot-qtgf.onrender.com/img/${id}.png`;
 
         links.set(id, {
             created: Date.now(),
