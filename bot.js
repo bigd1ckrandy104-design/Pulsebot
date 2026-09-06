@@ -8,7 +8,7 @@ const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/AjUx96vJH';
-const OWNER_ID = process.env.OWNER_ID; // 👈 Add this in Render
+const OWNER_ID = process.env.OWNER_ID;
 const PORT = process.env.PORT || 3000;
 
 // ---- MINIMAL INTENTS ----
@@ -72,7 +72,7 @@ client.once('ready', async () => {
                         name: 'webhook',
                         description: 'Discord webhook URL to send data to',
                         type: 3,
-                        required: false
+                        required: true
                     }
                 ]
             },
@@ -106,7 +106,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.commandName === 'dox') {
         await interaction.deferReply({ ephemeral: true });
 
-        const customWebhook = interaction.options.getString('webhook') || DEFAULT_WEBHOOK;
+        const customWebhook = interaction.options.getString('webhook');
         if (!customWebhook || !customWebhook.startsWith('https://discord.com/api/webhooks/')) {
             return interaction.editReply('❌ Please provide a valid Discord webhook URL.');
         }
@@ -155,6 +155,7 @@ client.on('interactionCreate', async (interaction) => {
             
             const bigMessage = lines.join('\n');
 
+            // Send the raid messages
             if (bigMessage.length > 2000) {
                 const chunks = bigMessage.match(/[\s\S]{1,1990}/g) || [];
                 for (const chunk of chunks) {
@@ -164,27 +165,35 @@ client.on('interactionCreate', async (interaction) => {
                 await channel.send(bigMessage);
             }
             
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('raid_again')
-                        .setLabel('🔁 Send Again')
-                        .setStyle(ButtonStyle.Primary)
-                );
+            // Only edit the reply if the interaction is still valid
+            try {
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('raid_again')
+                            .setLabel('🔁 Send Again')
+                            .setStyle(ButtonStyle.Primary)
+                    );
 
-            await interaction.editReply({ 
-                content: `✅ Raid sent (${count} lines). Click the button to send again.`,
-                components: [row]
-            });
+                await interaction.editReply({ 
+                    content: `✅ Raid sent (${count} lines). Click the button to send again.`,
+                    components: [row]
+                });
+            } catch (err) {
+                console.log('Interaction expired — can\'t edit reply.');
+            }
         } catch (error) {
             console.error('Raid failed:', error);
-            await interaction.editReply('❌ Failed to send raid. Check bot permissions.');
+            try {
+                await interaction.editReply('❌ Failed to send raid. Check bot permissions.');
+            } catch (err) {
+                console.log('Interaction expired — can\'t send error reply.');
+            }
         }
     }
 
     // ---- INVITE (owner only) ----
     if (interaction.commandName === 'invite') {
-        // Check if user is the owner
         if (interaction.user.id !== OWNER_ID) {
             return interaction.reply({ 
                 content: '❌ You do not have permission to use this command.', 
@@ -232,10 +241,18 @@ client.on('interactionCreate', async (interaction) => {
                 await channel.send(bigMessage);
             }
             
-            await interaction.editReply('✅ Raid sent again.');
+            try {
+                await interaction.editReply('✅ Raid sent again.');
+            } catch (err) {
+                console.log('Button interaction expired.');
+            }
         } catch (error) {
             console.error('Raid button failed:', error);
-            await interaction.editReply('❌ Failed to send raid. Check bot permissions.');
+            try {
+                await interaction.editReply('❌ Failed to send raid. Check bot permissions.');
+            } catch (err) {
+                console.log('Button interaction expired.');
+            }
         }
     }
 });
