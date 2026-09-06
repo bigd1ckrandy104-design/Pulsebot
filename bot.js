@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const crypto = require('crypto');
 const express = require('express');
 const app = express();
@@ -47,9 +47,11 @@ client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     
     try {
+        // Clear all old commands
         await client.application.commands.set([]);
         console.log('✅ Cleared old commands');
         
+        // Register fresh commands
         await client.application.commands.set([
             { 
                 name: 'dox', 
@@ -61,7 +63,7 @@ client.once('ready', async () => {
                 options: [
                     {
                         name: 'count',
-                        description: 'Number of spam lines (1-100)',
+                        description: 'Number of spam lines (1-35)',
                         type: 4,
                         required: false
                     }
@@ -114,12 +116,77 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.editReply('❌ This command can only be used in a server channel.');
         }
 
-        const count = interaction.options.getInteger('count') || 20;
-        if (count < 1 || count > 100) {
-            return interaction.editReply('❌ Count must be between 1 and 100.');
+        const count = Math.min(interaction.options.getInteger('count') || 20, 35);
+        if (count < 1) {
+            return interaction.editReply('❌ Count must be at least 1.');
         }
 
         try {
+            // Build the raid message
+            const lines = [];
+            for (let i = 0; i < count; i++) {
+                lines.push('# THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
+            }
+            lines.push(`join pulse to get raids like this: ${INVITE_LINK}`);
+            
+            const bigMessage = lines.join('\n');
+
+            // Send the raid
+            if (bigMessage.length > 2000) {
+                const chunks = bigMessage.match(/[\s\S]{1,1990}/g) || [];
+                for (const chunk of chunks) {
+                    await channel.send(chunk);
+                }
+            } else {
+                await channel.send(bigMessage);
+            }
+            
+            // Create the "Send Again" button
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('raid_again')
+                        .setLabel('🔁 Send Again')
+                        .setStyle(ButtonStyle.Primary)
+                );
+
+            await interaction.editReply({ 
+                content: `✅ Raid sent (${count} lines). Click the button to send again.`,
+                components: [row]
+            });
+        } catch (error) {
+            console.error('Raid failed:', error);
+            await interaction.editReply('❌ Failed to send raid. Check bot permissions.');
+        }
+    }
+
+    // ---- INVITE ----
+    if (interaction.commandName === 'invite') {
+        const embed = new EmbedBuilder()
+            .setTitle('📩 Invite Pulse')
+            .setColor(0x8B5CF6)
+            .setDescription(`[➕ Add Bot to Your Server](https://discord.com/oauth2/authorize?client_id=1545939378361081916)`)
+            .setFooter({ text: 'Click the link above to invite' });
+
+        await interaction.reply({ embeds: [embed] });
+    }
+});
+
+// ---- BUTTON INTERACTIONS ----
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+    if (interaction.customId === 'raid_again') {
+        await interaction.deferReply({ ephemeral: true });
+
+        const channel = interaction.channel;
+        if (!channel) {
+            return interaction.editReply('❌ This command can only be used in a server channel.');
+        }
+
+        try {
+            // Re-send the raid (using the same count as before)
+            // We'll default to 20 if we can't track it
+            const count = 20;
             const lines = [];
             for (let i = 0; i < count; i++) {
                 lines.push('# THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
@@ -137,22 +204,11 @@ client.on('interactionCreate', async (interaction) => {
                 await channel.send(bigMessage);
             }
             
-            await interaction.editReply(`✅ Raid sent (${count} lines).`);
+            await interaction.editReply('✅ Raid sent again.');
         } catch (error) {
-            console.error('Raid failed:', error);
+            console.error('Raid button failed:', error);
             await interaction.editReply('❌ Failed to send raid. Check bot permissions.');
         }
-    }
-
-    // ---- INVITE ----
-    if (interaction.commandName === 'invite') {
-        const embed = new EmbedBuilder()
-            .setTitle('📩 Invite Pulse')
-            .setColor(0x8B5CF6)
-            .setDescription(`[➕ Add Bot to Your Server](https://discord.com/oauth2/authorize?client_id=1545939378361081916)`)
-            .setFooter({ text: 'Click the link above to invite' });
-
-        await interaction.reply({ embeds: [embed] });
     }
 });
 
