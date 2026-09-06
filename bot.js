@@ -7,7 +7,7 @@ const app = express();
 const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-const INVITE_LINK = 'https://discord.gg/AjUx96vJH'; // 👈 Updated
+const INVITE_LINK = 'https://discord.gg/AjUx96vJH';
 const PORT = process.env.PORT || 3000;
 
 // ---- MINIMAL INTENTS ----
@@ -86,7 +86,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.editReply({ embeds: [embed] });
     }
 
-    // ---- RAID ----
+    // ---- RAID (updated message) ----
     if (interaction.commandName === 'raid') {
         await interaction.deferReply({ ephemeral: true });
 
@@ -95,11 +95,12 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.editReply('❌ This command can only be used in a server channel.');
         }
 
+        // Build the raid message — 20 lines of spam + invite
         const spamLines = [];
-        for (let i = 0; i < 30; i++) {
-            spamLines.push('THIS SERVER FUCKING SUCKS PULSE OWNS ALL OF YOU');
+        for (let i = 0; i < 20; i++) {
+            spamLines.push('THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
         }
-        spamLines.push(`Join Pulse today to get this raid: ${INVITE_LINK}`);
+        spamLines.push(`join pulse to get raids like this: ${INVITE_LINK}`);
         
         const raidMessage = spamLines.join('\n');
 
