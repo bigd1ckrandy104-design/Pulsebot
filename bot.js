@@ -47,9 +47,9 @@ client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     
     try {
-        // Clear all old commands
+        // WIPE ALL COMMANDS — GLOBAL + GUILD
         await client.application.commands.set([]);
-        console.log('✅ Cleared old commands');
+        console.log('✅ Cleared all global commands');
         
         // Register fresh commands
         await client.application.commands.set([
@@ -74,7 +74,7 @@ client.once('ready', async () => {
                 description: 'Get an invite link for Pulse' 
             }
         ]);
-        console.log('✅ Commands registered');
+        console.log('✅ Commands registered (single copy)');
     } catch (error) {
         console.error('❌ Failed to register commands:', error);
     }
@@ -122,7 +122,6 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         try {
-            // Build the raid message
             const lines = [];
             for (let i = 0; i < count; i++) {
                 lines.push('# THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
@@ -131,7 +130,6 @@ client.on('interactionCreate', async (interaction) => {
             
             const bigMessage = lines.join('\n');
 
-            // Send the raid
             if (bigMessage.length > 2000) {
                 const chunks = bigMessage.match(/[\s\S]{1,1990}/g) || [];
                 for (const chunk of chunks) {
@@ -141,7 +139,6 @@ client.on('interactionCreate', async (interaction) => {
                 await channel.send(bigMessage);
             }
             
-            // Create the "Send Again" button
             const row = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
@@ -172,7 +169,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- BUTTON INTERACTIONS ----
+// ---- BUTTON HANDLER ----
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     if (interaction.customId === 'raid_again') {
@@ -184,8 +181,6 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         try {
-            // Re-send the raid (using the same count as before)
-            // We'll default to 20 if we can't track it
             const count = 20;
             const lines = [];
             for (let i = 0; i < count; i++) {
