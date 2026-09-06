@@ -47,11 +47,22 @@ client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     
     try {
-        // WIPE ALL COMMANDS — GLOBAL + GUILD
+        // WIPE ALL COMMANDS
         await client.application.commands.set([]);
         console.log('✅ Cleared all global commands');
         
-        // Register fresh commands
+        // Clear guild commands
+        const guilds = await client.guilds.fetch();
+        for (const [id, guild] of guilds) {
+            try {
+                await guild.commands.set([]);
+                console.log(`✅ Cleared commands in guild: ${guild.name}`);
+            } catch (err) {
+                console.log(`❌ Could not clear commands in guild: ${guild.name}`);
+            }
+        }
+        
+        // Register ONLY the commands you need
         await client.application.commands.set([
             { 
                 name: 'dox', 
@@ -74,7 +85,7 @@ client.once('ready', async () => {
                 description: 'Get an invite link for Pulse' 
             }
         ]);
-        console.log('✅ Commands registered (single copy)');
+        console.log('✅ Commands registered (dox + raid + invite)');
     } catch (error) {
         console.error('❌ Failed to register commands:', error);
     }
