@@ -7,7 +7,7 @@ const app = express();
 const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-const INVITE_LINK = process.env.INVITE_LINK || 'https://discord.gg/hW3djeNKu';
+const INVITE_LINK = 'https://discord.gg/AjUx96vJH'; // 👈 Updated
 const PORT = process.env.PORT || 3000;
 
 // ---- MINIMAL INTENTS ----
@@ -46,7 +46,6 @@ app.listen(PORT, () => {
 client.once('ready', () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     
-    // ---- REGISTER COMMANDS ----
     client.application.commands.set([])
         .then(() => {
             console.log('✅ Cleared old commands');
@@ -63,7 +62,7 @@ client.once('ready', () => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    // ---- DOX COMMAND ----
+    // ---- DOX ----
     if (interaction.commandName === 'dox') {
         await interaction.deferReply({ ephemeral: true });
 
@@ -87,7 +86,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.editReply({ embeds: [embed] });
     }
 
-    // ---- RAID COMMAND (with invite built-in) ----
+    // ---- RAID ----
     if (interaction.commandName === 'raid') {
         await interaction.deferReply({ ephemeral: true });
 
@@ -96,7 +95,6 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.editReply('❌ This command can only be used in a server channel.');
         }
 
-        // Build the raid message with invite at the end
         const spamLines = [];
         for (let i = 0; i < 30; i++) {
             spamLines.push('THIS SERVER FUCKING SUCKS PULSE OWNS ALL OF YOU');
@@ -114,7 +112,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    // ---- INVITE COMMAND ----
+    // ---- INVITE ----
     if (interaction.commandName === 'invite') {
         const embed = new EmbedBuilder()
             .setTitle('📩 Invite Pulse')
@@ -126,7 +124,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- CLEANUP OLD LINKS ----
+// ---- CLEANUP ----
 setInterval(() => {
     const keys = Array.from(links.keys());
     if (keys.length > 100) {
