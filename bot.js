@@ -4,7 +4,6 @@ const express = require('express');
 const app = express();
 
 const TOKEN = process.env.TOKEN;
-const USER_TOKEN = process.env.USER_TOKEN;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
 const PORT = process.env.PORT || 3000;
@@ -39,14 +38,6 @@ client.once('ready', async () => {
             options: [
                 { name: 'count', type: 4, description: 'Number of messages', required: true },
                 { name: 'message', type: 3, description: 'Content', required: true }
-            ]
-        },
-        {
-            name: 'raid',
-            description: 'Raid current channel or specified channel (uses user token)',
-            options: [
-                { name: 'channel_id', type: 3, description: 'Channel ID (optional, defaults to current)', required: false },
-                { name: 'lines', type: 4, description: 'Heading lines (default 30)', required: false }
             ]
         },
         {
@@ -103,54 +94,6 @@ client.on('interactionCreate', async (interaction) => {
             await channel.send(msg).catch(() => {});
         }
         await interaction.editReply(`✅ Spammed ${max} messages.`);
-        return;
-    }
-
-    // ---- RAID (channel optional) ----
-    if (interaction.commandName === 'raid') {
-        await interaction.deferReply({ ephemeral: true });
-        if (!USER_TOKEN) {
-            return interaction.editReply('❌ USER_TOKEN not set. Add it to environment variables.');
-        }
-
-        let channelId = interaction.options.getString('channel_id');
-        if (!channelId) {
-            if (!interaction.channel) {
-                return interaction.editReply('❌ No channel specified and not in a server channel.');
-            }
-            channelId = interaction.channel.id;
-        }
-
-        const linesCount = Math.min(interaction.options.getInteger('lines') || 30, 50);
-
-        const firstLine = '@everyone FUCK THIS SERVER PULSE OWNS ALL YOU STUPID N!GGERS';
-        const headingLine = '# FUCK THIS SERVER PULSE OWNS ALL YOU STUPID N!GGERS';
-        const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
-
-        let message = firstLine + '\n';
-        for (let i = 0; i < linesCount; i++) {
-            message += headingLine + '\n';
-        }
-        message += inviteLine;
-
-        try {
-            const res = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': USER_TOKEN,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ content: message })
-            });
-            if (res.ok) {
-                await interaction.editReply(`✅ Raid sent to <#${channelId}>`);
-            } else {
-                const err = await res.text();
-                await interaction.editReply(`❌ Failed: ${res.status} - ${err}`);
-            }
-        } catch (e) {
-            await interaction.editReply('❌ Error sending raid. Check channel ID and token.');
-        }
         return;
     }
 
