@@ -9,14 +9,12 @@ const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/hW3djeNKu';
 const PORT = process.env.PORT || 3000;
 
-// ---- CLIENT ----
+// ---- CLIENT (NO DISALLOWED INTENTS) ----
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.DirectMessages
+        GatewayIntentBits.Guilds,          // needed for servers
+        GatewayIntentBits.GuildMessages    // needed for sending messages
+        // REMOVED: MessageContent, GuildMembers, DirectMessages
     ]
 });
 
