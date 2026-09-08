@@ -5,7 +5,7 @@ const crypto = require('crypto');
 
 const TOKEN = process.env.TOKEN;
 const PORT = process.env.PORT || 3000;
-const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
+const INVITE_LINK = 'https://discord.gg/FCJ5EjVmG';
 
 if (!TOKEN) {
     console.error('❌ TOKEN environment variable is required!');
